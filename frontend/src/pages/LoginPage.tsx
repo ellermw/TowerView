@@ -234,6 +234,14 @@ export default function LoginPage() {
         isOpen={showChangePassword}
         onClose={() => setShowChangePassword(false)}
         forcedChange={true}
+        onSuccess={() => {
+          // Complete login after password change
+          if (tempAuthData) {
+            setAuth(tempAuthData.user, tempAuthData.access_token, tempAuthData.refresh_token)
+            setShowChangePassword(false)
+            toast.success('Password changed! Logging you in...')
+          }
+        }}
       />
     </div>
   )

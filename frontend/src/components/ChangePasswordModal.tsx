@@ -9,9 +9,10 @@ interface ChangePasswordModalProps {
   isOpen: boolean
   onClose: () => void
   forcedChange?: boolean
+  onSuccess?: () => void
 }
 
-export default function ChangePasswordModal({ isOpen, onClose, forcedChange = false }: ChangePasswordModalProps) {
+export default function ChangePasswordModal({ isOpen, onClose, forcedChange = false, onSuccess }: ChangePasswordModalProps) {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -46,13 +47,14 @@ export default function ChangePasswordModal({ isOpen, onClose, forcedChange = fa
       setNewPassword('')
       setConfirmPassword('')
 
-      // Close modal and logout if not forced
+      // Close modal and handle success
       if (!forcedChange) {
         onClose()
       } else {
-        // For forced change, logout and redirect to login
-        logout()
-        toast.success('Please login with your new password')
+        // For forced change, call the success callback
+        if (onSuccess) {
+          onSuccess()
+        }
       }
     } catch (error: any) {
       const message = error.response?.data?.detail || 'Failed to change password'
