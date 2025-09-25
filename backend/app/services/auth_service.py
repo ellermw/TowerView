@@ -17,12 +17,31 @@ class AuthService:
         self.user_service = UserService(db)
 
     async def authenticate_admin(self, login_data: AdminLoginRequest) -> Optional[User]:
+        # Make username case-insensitive for consistency
+        from sqlalchemy import func
         user = self.db.query(User).filter(
-            User.username == login_data.username,
+            func.lower(User.username) == login_data.username.lower(),
             User.type == UserType.admin
         ).first()
 
         if not user or not verify_password(login_data.password, user.password_hash):
+            return None
+
+        # Update last login time
+        user.last_login_at = datetime.utcnow()
+        self.db.commit()
+        return user
+
+    def authenticate_local_user(self, username: str, password: str) -> Optional[User]:
+        """Authenticate local user with username and password"""
+        # Make username case-insensitive by using LOWER() function
+        from sqlalchemy import func
+        user = self.db.query(User).filter(
+            func.lower(User.username) == username.lower(),
+            User.type == UserType.local_user
+        ).first()
+
+        if not user or not verify_password(password, user.password_hash):
             return None
 
         # Update last login time

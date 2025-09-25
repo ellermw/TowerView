@@ -1,10 +1,11 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useState, useEffect } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { Disclosure, Menu, Transition } from '@headlessui/react'
 import { Bars3Icon, XMarkIcon, UserIcon, KeyIcon } from '@heroicons/react/24/outline'
 import { useAuthStore } from '../store/authStore'
 import { classNames } from '../utils/classNames'
 import ChangePasswordModal from './ChangePasswordModal'
+import { usePermissions } from '../hooks/usePermissions'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -14,6 +15,8 @@ export default function Layout({ children }: LayoutProps) {
   const { user, logout } = useAuthStore()
   const location = useLocation()
   const [showChangePassword, setShowChangePassword] = useState(false)
+  const { hasPermission, isAdmin, isLocalUser } = usePermissions()
+  const [navigation, setNavigation] = useState<Array<{ name: string; href: string }>>([])
 
   const isCurrentPath = (href: string) => {
     // Exact match for root paths
@@ -24,21 +27,45 @@ export default function Layout({ children }: LayoutProps) {
     return location.pathname.startsWith(href)
   }
 
-  const navigation = user?.type === 'admin'
-    ? [
-        { name: 'Dashboard', href: '/admin' },
-        { name: 'Servers', href: '/admin/servers' },
-        { name: 'Sessions', href: '/admin/sessions' },
-        { name: 'Users', href: '/admin/users' },
-        { name: 'Local Users', href: '/admin/local-users' },
-        { name: 'Audit Logs', href: '/admin/audit' },
-        { name: 'Settings', href: '/admin/settings' },
-      ]
-    : [
-        { name: 'Dashboard', href: '/dashboard' },
-        { name: 'Watch History', href: '/dashboard/history' },
-        { name: 'Statistics', href: '/dashboard/stats' },
-      ]
+  // Build navigation based on user type and permissions
+  useEffect(() => {
+    const nav = []
+
+    if (isAdmin || isLocalUser) {
+      // Dashboard is always visible
+      nav.push({ name: 'Dashboard', href: '/admin' })
+
+      // Servers - visible to all but functionality limited by manage_servers permission
+      nav.push({ name: 'Servers', href: '/admin/servers' })
+
+      // Sessions - requires view_sessions permission
+      if (isAdmin || hasPermission('view_sessions')) {
+        nav.push({ name: 'Sessions', href: '/admin/sessions' })
+      }
+
+      // Users - requires view_users permission
+      if (isAdmin || hasPermission('view_users')) {
+        nav.push({ name: 'Users', href: '/admin/users' })
+      }
+
+      // Local Users - admin only or if user can manage users
+      if (isAdmin || hasPermission('manage_users')) {
+        nav.push({ name: 'Local Users', href: '/admin/local-users' })
+      }
+
+      // Audit Logs - requires view_audit_logs permission
+      if (isAdmin || hasPermission('view_audit_logs')) {
+        nav.push({ name: 'Audit Logs', href: '/admin/audit' })
+      }
+
+      // Settings - requires manage_settings permission
+      if (isAdmin || hasPermission('manage_settings')) {
+        nav.push({ name: 'Settings', href: '/admin/settings' })
+      }
+    }
+
+    setNavigation(nav)
+  }, [isAdmin, isLocalUser, hasPermission])
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
@@ -50,7 +77,7 @@ export default function Layout({ children }: LayoutProps) {
                 <div className="flex">
                   <div className="flex-shrink-0 flex items-center">
                     <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-                      Towerview
+                      The Tower - View
                     </h1>
                   </div>
                   <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
@@ -93,27 +120,25 @@ export default function Layout({ children }: LayoutProps) {
                         <div className="px-4 py-2 text-sm text-slate-700 dark:text-slate-300 border-b border-slate-100 dark:border-slate-600">
                           {user?.username}
                           <div className="text-xs text-slate-500 dark:text-slate-400">
-                            {user?.type === 'admin' ? 'Administrator' : 'Media User'}
+                            {user?.type === 'admin' ? 'Administrator' : 'Local User'}
                           </div>
                         </div>
-                        {user?.type === 'admin' && (
-                          <Menu.Item>
-                            {({ active }) => (
-                              <button
-                                onClick={() => setShowChangePassword(true)}
-                                className={classNames(
-                                  active ? 'bg-slate-100 dark:bg-slate-600' : '',
-                                  'block w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300'
-                                )}
-                              >
-                                <div className="flex items-center">
-                                  <KeyIcon className="h-4 w-4 mr-2" />
-                                  Change Password
-                                </div>
-                              </button>
-                            )}
-                          </Menu.Item>
-                        )}
+                        <Menu.Item>
+                          {({ active }) => (
+                            <button
+                              onClick={() => setShowChangePassword(true)}
+                              className={classNames(
+                                active ? 'bg-slate-100 dark:bg-slate-600' : '',
+                                'block w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300'
+                              )}
+                            >
+                              <div className="flex items-center">
+                                <KeyIcon className="h-4 w-4 mr-2" />
+                                Change Password
+                              </div>
+                            </button>
+                          )}
+                        </Menu.Item>
                         <Menu.Item>
                           {({ active }) => (
                             <button
@@ -174,22 +199,20 @@ export default function Layout({ children }: LayoutProps) {
                       {user?.username}
                     </div>
                     <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                      {user?.type === 'admin' ? 'Administrator' : 'Media User'}
+                      {user?.type === 'admin' ? 'Administrator' : 'Local User'}
                     </div>
                   </div>
                 </div>
                 <div className="mt-3 space-y-1">
-                  {user?.type === 'admin' && (
-                    <button
-                      onClick={() => setShowChangePassword(true)}
-                      className="block w-full text-left px-4 py-2 text-base font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"
-                    >
-                      <div className="flex items-center">
-                        <KeyIcon className="h-5 w-5 mr-2" />
-                        Change Password
-                      </div>
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setShowChangePassword(true)}
+                    className="block w-full text-left px-4 py-2 text-base font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"
+                  >
+                    <div className="flex items-center">
+                      <KeyIcon className="h-5 w-5 mr-2" />
+                      Change Password
+                    </div>
+                  </button>
                   <button
                     onClick={logout}
                     className="block w-full text-left px-4 py-2 text-base font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"

@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -10,6 +11,7 @@ from .models import Base
 from .api.routes import auth, admin, media_user
 from .api.routes import settings as settings_router
 from .services.auth_service import AuthService
+from .services.metrics_cache_service import metrics_cache
 
 # Configure logging
 logging.basicConfig(
@@ -20,10 +22,30 @@ logging.basicConfig(
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifecycle"""
+    # Initialize on startup
+    db = next(get_db())
+    auth_service = AuthService(db)
+    await auth_service.create_initial_admin()
+    db.close()
+
+    # Start background metrics collection
+    await metrics_cache.start()
+    logging.info("Started background metrics collection service")
+
+    yield
+
+    # Stop background metrics collection on shutdown
+    await metrics_cache.stop()
+    logging.info("Stopped background metrics collection service")
+
 app = FastAPI(
     title="Towerview",
     description="Multi-Server Media Monitoring & Admin App",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
@@ -48,18 +70,8 @@ app.include_router(media_user.router, prefix="/api/me", tags=["Media User"])
 app.include_router(settings_router.router, prefix="/api/settings", tags=["Settings"])
 
 # Import and include WebSocket router
-from .api.routes import websocket
-app.include_router(websocket.router, prefix="/api", tags=["WebSocket"])
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the application on startup"""
-    # Create initial admin user if it doesn't exist
-    db = next(get_db())
-    auth_service = AuthService(db)
-    await auth_service.create_initial_admin()
-    db.close()
+from .api.routes import websocket_metrics
+app.include_router(websocket_metrics.router, prefix="/api", tags=["WebSocket"])
 
 
 @app.get("/")

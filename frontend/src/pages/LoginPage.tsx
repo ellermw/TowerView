@@ -17,11 +17,16 @@ interface LoginRequest {
     username: string
     password: string
   }
+  local_login?: {
+    username: string
+    password: string
+  }
 }
 
 export default function LoginPage() {
-  const [loginType, setLoginType] = useState<'admin' | 'media'>('admin')
+  const [loginType, setLoginType] = useState<'admin' | 'local'>('admin')
   const [showPassword, setShowPassword] = useState(false)
+
   const [showChangePassword, setShowChangePassword] = useState(false)
   const [tempAuthData, setTempAuthData] = useState<any>(null)
   const [formData, setFormData] = useState({
@@ -35,8 +40,6 @@ export default function LoginPage() {
 
   const loginMutation = useMutation(
     async (data: LoginRequest) => {
-      console.log('API Base URL:', api.defaults.baseURL)
-      console.log('Login data:', data)
       const response = await api.post('/auth/login', data)
       return response.data
     },
@@ -64,15 +67,14 @@ export default function LoginPage() {
           const user = {
             id: 1, // This would come from the token or separate API call
             username: formData.username,
-            type: loginType === 'media' ? 'media_user' as const : 'admin' as const,
+            type: loginType === 'media' ? 'media_user' as const :
+                  loginType === 'local' ? 'local_user' as const : 'admin' as const,
           }
           setAuth(user, data.access_token, data.refresh_token)
           toast.success('Login successful!')
         }
       },
       onError: (error: any) => {
-        console.error('Login error:', error)
-        console.error('Error response:', error.response)
         toast.error(error.response?.data?.detail || error.message || 'Login failed')
       },
     }
@@ -88,11 +90,9 @@ export default function LoginPage() {
           password: formData.password,
         },
       })
-    } else {
+    } else if (loginType === 'local') {
       loginMutation.mutate({
-        media_login: {
-          server_id: parseInt(formData.server_id),
-          provider: formData.provider,
+        local_login: {
           username: formData.username,
           password: formData.password,
         },
@@ -117,64 +117,29 @@ export default function LoginPage() {
           <div className="flex rounded-lg bg-slate-100 dark:bg-slate-700 p-1 mb-6">
             <button
               type="button"
-              className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors ${
+              className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors ${
                 loginType === 'admin'
                   ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow'
                   : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
               onClick={() => setLoginType('admin')}
             >
-              Admin Login
+              Admin
             </button>
             <button
               type="button"
-              className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors ${
-                loginType === 'media'
+              className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors ${
+                loginType === 'local'
                   ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow'
                   : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
-              onClick={() => setLoginType('media')}
+              onClick={() => setLoginType('local')}
             >
-              Media User Login
+              Local User
             </button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {loginType === 'media' && (
-              <>
-                <div>
-                  <label htmlFor="provider" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Provider
-                  </label>
-                  <select
-                    id="provider"
-                    value={formData.provider}
-                    onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
-                    className="input mt-1"
-                    required
-                  >
-                    <option value="plex">Plex</option>
-                    <option value="emby">Emby</option>
-                    <option value="jellyfin">Jellyfin</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="server_id" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Server ID
-                  </label>
-                  <input
-                    id="server_id"
-                    type="number"
-                    value={formData.server_id}
-                    onChange={(e) => setFormData({ ...formData, server_id: e.target.value })}
-                    className="input mt-1"
-                    placeholder="Enter server ID"
-                    required
-                  />
-                </div>
-              </>
-            )}
 
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-slate-700 dark:text-slate-300">

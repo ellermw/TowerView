@@ -612,8 +612,9 @@ async def create_local_user(
     from ...models.user import UserType
     from ...core.security import get_password_hash
 
-    # Check if username already exists
-    existing_user = db.query(User).filter(User.username == user_data.username).first()
+    # Check if username already exists (case-insensitive)
+    from sqlalchemy import func
+    existing_user = db.query(User).filter(func.lower(User.username) == user_data.username.lower()).first()
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -726,11 +727,18 @@ async def delete_local_user(
 @router.get("/local-users/{user_id}/permissions", response_model=List[UserPermissionSchema])
 async def get_user_permissions(
     user_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_user),  # For now, keep admin-only
     db: Session = Depends(get_db)
 ):
     """Get permissions for a local user"""
     from ...models.user_permission import UserPermission
+
+    # Check authorization: users can fetch their own permissions, admins can fetch anyone's
+    if current_user.id != user_id and current_user.type != UserType.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view these permissions"
+        )
 
     permissions = db.query(UserPermission).filter(
         UserPermission.user_id == user_id

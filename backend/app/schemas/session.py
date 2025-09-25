@@ -34,58 +34,40 @@ class LiveSessionResponse(BaseModel):
     progress_seconds: int = 0
     duration_seconds: int = 0
     progress_percent: float = 0.0
+    progress: Optional[int] = None  # Legacy field
 
     # Server info (added by API)
     server_name: Optional[str] = None
     server_id: Optional[int] = None
     server_type: Optional[str] = None
 
-    # Media details
-    title: Optional[str] = None
-    full_title: Optional[str] = None
-    grandparent_title: Optional[str] = None  # Show name
-    parent_title: Optional[str] = None  # Season
-    year: Optional[str] = None
-    summary: Optional[str] = None
-    content_rating: Optional[str] = None
-    library_section: Optional[str] = None
-
     # User info
     user_id: Optional[str] = None
     username: Optional[str] = None
-    user_thumb: Optional[str] = None
 
-    # Player info
+    # Media details
+    media_title: Optional[str] = None
+    title: Optional[str] = None
+    full_title: Optional[str] = None
+    year: Optional[str] = None
+    summary: Optional[str] = None
+    runtime: Optional[int] = None
+    library_section: Optional[str] = None
+    grandparent_title: Optional[str] = None
+    parent_title: Optional[str] = None
+
+    # Device/Player info
     device: Optional[str] = None
     platform: Optional[str] = None
     product: Optional[str] = None
-    version: Optional[str] = None
-    address: Optional[str] = None
-    location: Optional[str] = None
 
     # Streaming details
     video_decision: Optional[str] = None
     original_resolution: Optional[str] = None
     original_bitrate: Optional[str] = None
     stream_bitrate: Optional[str] = None
-    session_bandwidth: Optional[str] = None
-    session_location: Optional[str] = None
     video_codec: Optional[str] = None
     audio_codec: Optional[str] = None
-    audio_channels: Optional[str] = None
     container: Optional[str] = None
-    video_profile: Optional[str] = None
+    session_bandwidth: Optional[str] = None
     quality_profile: Optional[str] = None
-    is_4k: bool = False
-    is_hdr: bool = False
-    is_dolby_vision: bool = False
-
-    # Transcode details
-    transcode_hw_requested: Optional[bool] = None
-    transcode_hw_decode: Optional[bool] = None
-    transcode_hw_encode: Optional[bool] = None
-    transcode_hw_decode_title: Optional[str] = None
-    transcode_hw_encode_title: Optional[str] = None
-    transcode_hw_full_pipeline: Optional[bool] = None
-    transcode_throttled: Optional[bool] = None
-    transcode_speed: Optional[float] = None

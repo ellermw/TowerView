@@ -63,12 +63,30 @@ async def fetch_server_metrics(
     server_id: int,
     user_id: int
 ) -> dict:
-    """Fetch metrics for a specific server"""
-    # Create a new session for this fetch to avoid connection pool issues
+    """Fetch metrics for a specific server from cache"""
+    # Import metrics cache service
+    from ...services.metrics_cache_service import metrics_cache
+
+    # Try to get metrics from cache first
+    cached_metrics = metrics_cache.get_metrics(server_id)
+    if cached_metrics:
+        # Add server_id to the cached metrics
+        cached_metrics["server_id"] = server_id
+        return cached_metrics
+
+    # If no cached metrics, return empty metrics
+    # The cache will be populated by the background service
     from ...core.database import SessionLocal
     db = SessionLocal()
     try:
-        integration = db.query(PortainerIntegration).filter_by(created_by_id=user_id).first()
+        # Get container name for display
+        from ...models.settings import Settings
+        settings = db.query(Settings).filter(
+            Settings.category == "portainer",
+            Settings.key == f"server_{server_id}_container"
+        ).first()
+
+        container_name = settings.value if settings else None
 
         if not integration or not integration.api_token:
             return {
@@ -177,7 +195,7 @@ async def metrics_streamer(
             logger.info(f"Sending metrics to {client_id}: {len(metrics_list)} server metrics")
             for m in metrics_list[:2]:  # Log first 2
                 if isinstance(m, dict):
-                    logger.debug(f"  Server {m.get('server_id', 'unknown')}: CPU={m.get('cpu_usage', 0):.1f}%, Mem={m.get('memory_usage', 0):.1f}%")
+                    logger.info(f"  Server {m.get('server_id', 'unknown')}: CPU={m.get('cpu_usage', 0):.1f}%, Mem={m.get('memory_usage', 0):.1f}%, Container={m.get('container', 'none')}")
 
             # Send to client
             await manager.send_metrics(client_id, {
@@ -198,8 +216,7 @@ async def metrics_streamer(
 
 @router.websocket("/ws/metrics")
 async def websocket_metrics(
-    websocket: WebSocket,
-    db: Session = Depends(get_db)
+    websocket: WebSocket
 ):
     """WebSocket endpoint for real-time server metrics"""
     await websocket.accept()
@@ -215,27 +232,37 @@ async def websocket_metrics(
 
         logger.info(f"Token present: {bool(token)}, Servers: {servers}")
 
-        # Authenticate user from token
-        user = get_current_user_from_token(token, db)
-        if not user:
-            logger.error("User not found from token")
-            await websocket.close(code=4003, reason="Unauthorized")
-            return
+        # Create a new session just for authentication
+        from ...core.database import SessionLocal
+        db = SessionLocal()
+        try:
+            # Authenticate user from token
+            user = get_current_user_from_token(token, db)
+            if not user:
+                logger.error("User not found from token")
+                await websocket.close(code=4003, reason="Unauthorized")
+                return
 
-        # Compare enum values properly
-        from ...models.user import UserType
-        if user.type != UserType.admin:
-            logger.error(f"User is not admin: {user.type}")
-            await websocket.close(code=4003, reason="Unauthorized")
-            return
+            # Compare enum values properly
+            from ...models.user import UserType
+            if user.type != UserType.admin:
+                logger.error(f"User is not admin: {user.type}")
+                await websocket.close(code=4003, reason="Unauthorized")
+                return
 
-        logger.info(f"Authenticated user: {user.username} (ID: {user.id})")
+            # Store user info we need
+            user_id = user.id
+            username = user.username
+            logger.info(f"Authenticated user: {username} (ID: {user_id})")
+        finally:
+            # Always close the db session
+            db.close()
     except Exception as e:
         logger.error(f"Initial auth error: {e}", exc_info=True)
         await websocket.close(code=4003, reason="Invalid initial message")
         return
 
-    client_id = f"user_{user.id}"
+    client_id = f"user_{user_id}"
     server_ids = servers if isinstance(servers, list) else []
 
     # Register client (without accepting again)
@@ -248,7 +275,7 @@ async def websocket_metrics(
         # Start metrics streaming task if not already running
         if client_id not in manager.metrics_tasks and server_ids:
             task = asyncio.create_task(
-                metrics_streamer(client_id, server_ids, user.id)
+                metrics_streamer(client_id, server_ids, user_id)
             )
             manager.metrics_tasks[client_id] = task
 
@@ -268,7 +295,7 @@ async def websocket_metrics(
 
                     # Start new task with updated servers
                     task = asyncio.create_task(
-                        metrics_streamer(client_id, new_servers, user.id)
+                        metrics_streamer(client_id, new_servers, user_id)
                     )
                     manager.metrics_tasks[client_id] = task
 

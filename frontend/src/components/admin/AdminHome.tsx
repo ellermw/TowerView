@@ -22,6 +22,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { Disclosure, Transition } from '@headlessui/react'
 import api from '../../services/api'
+import { usePermissions } from '../../hooks/usePermissions'
 
 interface LiveSession {
   session_id: string
@@ -191,6 +192,8 @@ interface GPUStatus {
 }
 
 export default function AdminHome() {
+  const { hasPermission, isAdmin, isLocalUser } = usePermissions()
+
   // Bandwidth tracking state for the graph
   const [bandwidthHistory, setBandwidthHistory] = React.useState<BandwidthDataPoint[]>([])
 
@@ -763,7 +766,8 @@ export default function AdminHome() {
         </p>
       </div>
 
-      {/* Active Sessions Section */}
+      {/* Active Sessions Section - requires view_sessions permission */}
+      {(isAdmin || hasPermission('view_sessions')) && (
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-4">
           <SignalIcon className="w-5 h-5 text-green-500" />

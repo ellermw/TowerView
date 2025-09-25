@@ -15,6 +15,13 @@ async def login(
     db: Session = Depends(get_db)
 ):
     """Login with either admin credentials or media user credentials"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Login request received: admin={bool(login_data.admin_login)}, media={bool(login_data.media_login)}, local={bool(login_data.local_login)}")
+    if login_data.admin_login:
+        logger.info(f"Admin login attempt: {login_data.admin_login.username}")
+    if login_data.local_login:
+        logger.info(f"Local login attempt: {login_data.local_login.username}")
     auth_service = AuthService(db)
 
     if login_data.admin_login:
@@ -33,10 +40,23 @@ async def login(
                 detail="Invalid media user credentials"
             )
 
+    elif login_data.local_login:
+        # Local user login
+        from ...models.user import UserType
+        user = auth_service.authenticate_local_user(
+            login_data.local_login.username,
+            login_data.local_login.password
+        )
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid local user credentials"
+            )
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Must provide either admin_login or media_login"
+            detail="Must provide either admin_login, media_login, or local_login"
         )
 
     return auth_service.create_tokens(user)
@@ -126,13 +146,6 @@ async def change_password(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
-        )
-
-    # Only admin users can change passwords
-    if user.type != UserType.admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admin users can change passwords"
         )
 
     # Validate new passwords match

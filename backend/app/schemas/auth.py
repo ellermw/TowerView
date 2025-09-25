@@ -15,9 +15,15 @@ class MediaLoginRequest(BaseModel):
     password: str
 
 
+class LocalLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
 class LoginRequest(BaseModel):
     admin_login: Optional[AdminLoginRequest] = None
     media_login: Optional[MediaLoginRequest] = None
+    local_login: Optional[LocalLoginRequest] = None
 
     class Config:
         extra = "forbid"

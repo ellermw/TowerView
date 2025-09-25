@@ -93,11 +93,14 @@ export function useWebSocketMetrics({
           if (message.type === 'metrics_update' && message.data) {
             // Update metrics state with new data
             const newMetrics: Record<number, MetricsData> = {}
+            console.log('Received metrics update:', message.data.length, 'servers')
             message.data.forEach((serverMetrics: MetricsData) => {
               if (serverMetrics.server_id) {
+                console.log(`  Server ${serverMetrics.server_id}: CPU=${serverMetrics.cpu_usage}%, Mem=${serverMetrics.memory_usage}%`)
                 newMetrics[serverMetrics.server_id] = serverMetrics
               }
             })
+            console.log('Updated metrics state:', Object.keys(newMetrics))
             setMetrics(newMetrics)
           }
         } catch (error) {

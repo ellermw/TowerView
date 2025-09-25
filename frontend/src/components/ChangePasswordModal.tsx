@@ -76,7 +76,7 @@ export default function ChangePasswordModal({ isOpen, onClose, forcedChange = fa
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" />
+          <div className="fixed inset-0 bg-slate-900 bg-opacity-75 transition-opacity" />
         </Transition.Child>
 
         <div className="fixed inset-0 z-10 overflow-y-auto">
@@ -90,12 +90,12 @@ export default function ChangePasswordModal({ isOpen, onClose, forcedChange = fa
               leaveFrom="opacity-100 translate-y-0 sm:scale-100"
               leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
             >
-              <Dialog.Panel className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
+              <Dialog.Panel className="relative transform overflow-hidden rounded-lg bg-slate-800 px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
                 <div className="absolute right-0 top-0 hidden pr-4 pt-4 sm:block">
                   {!forcedChange && (
                     <button
                       type="button"
-                      className="rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                      className="rounded-md bg-slate-700 text-slate-400 hover:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
                       onClick={onClose}
                     >
                       <span className="sr-only">Close</span>
@@ -105,17 +105,17 @@ export default function ChangePasswordModal({ isOpen, onClose, forcedChange = fa
                 </div>
                 <div className="sm:flex sm:items-start">
                   <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left w-full">
-                    <Dialog.Title as="h3" className="text-base font-semibold leading-6 text-gray-900">
+                    <Dialog.Title as="h3" className="text-base font-semibold leading-6 text-white">
                       {forcedChange ? 'Password Change Required' : 'Change Password'}
                     </Dialog.Title>
                     {forcedChange && (
-                      <p className="mt-2 text-sm text-gray-500">
+                      <p className="mt-2 text-sm text-slate-400">
                         You must change your password before continuing.
                       </p>
                     )}
                     <form onSubmit={handleSubmit} className="mt-4 space-y-4">
                       <div>
-                        <label htmlFor="current-password" className="block text-sm font-medium leading-6 text-gray-900">
+                        <label htmlFor="current-password" className="block text-sm font-medium leading-6 text-slate-300">
                           Current Password
                         </label>
                         <input
@@ -124,11 +124,11 @@ export default function ChangePasswordModal({ isOpen, onClose, forcedChange = fa
                           value={currentPassword}
                           onChange={(e) => setCurrentPassword(e.target.value)}
                           required
-                          className="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                          className="mt-1 block w-full rounded-md border-0 bg-slate-700 py-1.5 text-white shadow-sm ring-1 ring-inset ring-slate-600 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-primary-500 sm:text-sm sm:leading-6"
                         />
                       </div>
                       <div>
-                        <label htmlFor="new-password" className="block text-sm font-medium leading-6 text-gray-900">
+                        <label htmlFor="new-password" className="block text-sm font-medium leading-6 text-slate-300">
                           New Password
                         </label>
                         <input
@@ -138,11 +138,11 @@ export default function ChangePasswordModal({ isOpen, onClose, forcedChange = fa
                           onChange={(e) => setNewPassword(e.target.value)}
                           required
                           minLength={6}
-                          className="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                          className="mt-1 block w-full rounded-md border-0 bg-slate-700 py-1.5 text-white shadow-sm ring-1 ring-inset ring-slate-600 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-primary-500 sm:text-sm sm:leading-6"
                         />
                       </div>
                       <div>
-                        <label htmlFor="confirm-password" className="block text-sm font-medium leading-6 text-gray-900">
+                        <label htmlFor="confirm-password" className="block text-sm font-medium leading-6 text-slate-300">
                           Confirm New Password
                         </label>
                         <input
@@ -152,21 +152,21 @@ export default function ChangePasswordModal({ isOpen, onClose, forcedChange = fa
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           required
                           minLength={6}
-                          className="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                          className="mt-1 block w-full rounded-md border-0 bg-slate-700 py-1.5 text-white shadow-sm ring-1 ring-inset ring-slate-600 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-primary-500 sm:text-sm sm:leading-6"
                         />
                       </div>
                       <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
                         <button
                           type="submit"
                           disabled={isSubmitting}
-                          className="inline-flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 sm:ml-3 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="inline-flex w-full justify-center rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 sm:ml-3 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {isSubmitting ? 'Changing...' : 'Change Password'}
                         </button>
                         {!forcedChange && (
                           <button
                             type="button"
-                            className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto"
+                            className="mt-3 inline-flex w-full justify-center rounded-md bg-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 shadow-sm ring-1 ring-inset ring-slate-600 hover:bg-slate-600 sm:mt-0 sm:w-auto"
                             onClick={onClose}
                           >
                             Cancel

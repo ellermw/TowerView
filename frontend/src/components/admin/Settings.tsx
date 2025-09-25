@@ -81,7 +81,9 @@ export default function Settings() {
   const [portainerUrl, setPortainerUrl] = useState('')
   const [portainerUsername, setPortainerUsername] = useState('')
   const [portainerPassword, setPortainerPassword] = useState('')
+  const [portainerApiToken, setPortainerApiToken] = useState('')
   const [showPortainerAuth, setShowPortainerAuth] = useState(false)
+  const [portainerAuthMode, setPortainerAuthMode] = useState<'credentials' | 'token'>('credentials')
   const [portainerContainerMappings, setPortainerContainerMappings] = useState<Record<number, string>>({})
 
   // Fetch Netdata integration status
@@ -128,7 +130,7 @@ export default function Settings() {
 
   // Portainer mutations
   const authenticatePortainer = useMutation(
-    (data: { url: string; username: string; password: string }) =>
+    (data: { url: string; username?: string; password?: string; api_token?: string }) =>
       api.post('/settings/portainer/auth', data),
     {
       onSuccess: (res) => {
@@ -139,6 +141,7 @@ export default function Settings() {
         setPortainerUrl('')
         setPortainerUsername('')
         setPortainerPassword('')
+        setPortainerApiToken('')
       },
       onError: (error: any) => {
         toast.error(error.response?.data?.detail || 'Failed to connect to Portainer')
@@ -175,16 +178,31 @@ export default function Settings() {
   )
 
   const handlePortainerAuth = () => {
-    if (!portainerUrl || !portainerUsername || !portainerPassword) {
-      toast.error('Please fill in all fields')
+    if (!portainerUrl) {
+      toast.error('Please enter Portainer URL')
       return
     }
 
-    authenticatePortainer.mutate({
-      url: portainerUrl,
-      username: portainerUsername,
-      password: portainerPassword
-    })
+    if (portainerAuthMode === 'token') {
+      if (!portainerApiToken) {
+        toast.error('Please enter API token')
+        return
+      }
+      authenticatePortainer.mutate({
+        url: portainerUrl,
+        api_token: portainerApiToken
+      })
+    } else {
+      if (!portainerUsername || !portainerPassword) {
+        toast.error('Please fill in all fields')
+        return
+      }
+      authenticatePortainer.mutate({
+        url: portainerUrl,
+        username: portainerUsername,
+        password: portainerPassword
+      })
+    }
   }
 
   const handlePortainerContainerMapping = (serverId: number, containerId: string) => {
@@ -310,31 +328,81 @@ export default function Settings() {
                         />
                       </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                          Username
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                          Authentication Method
                         </label>
-                        <input
-                          type="text"
-                          value={portainerUsername}
-                          onChange={(e) => setPortainerUsername(e.target.value)}
-                          placeholder="admin"
-                          className="input w-full"
-                        />
+                        <div className="flex space-x-4">
+                          <button
+                            type="button"
+                            onClick={() => setPortainerAuthMode('credentials')}
+                            className={`flex-1 py-2 px-4 rounded-lg border transition-colors ${
+                              portainerAuthMode === 'credentials'
+                                ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            Username & Password
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPortainerAuthMode('token')}
+                            className={`flex-1 py-2 px-4 rounded-lg border transition-colors ${
+                              portainerAuthMode === 'token'
+                                ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            API Token
+                          </button>
+                        </div>
                       </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                          Password
-                        </label>
-                        <input
-                          type="password"
-                          value={portainerPassword}
-                          onChange={(e) => setPortainerPassword(e.target.value)}
-                          placeholder="Enter your password"
-                          className="input w-full"
-                        />
-                      </div>
+                      {portainerAuthMode === 'credentials' ? (
+                        <>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                              Username
+                            </label>
+                            <input
+                              type="text"
+                              value={portainerUsername}
+                              onChange={(e) => setPortainerUsername(e.target.value)}
+                              placeholder="admin"
+                              className="input w-full"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                              Password
+                            </label>
+                            <input
+                              type="password"
+                              value={portainerPassword}
+                              onChange={(e) => setPortainerPassword(e.target.value)}
+                              placeholder="Enter your password"
+                              className="input w-full"
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                            API Token
+                          </label>
+                          <input
+                            type="text"
+                            value={portainerApiToken}
+                            onChange={(e) => setPortainerApiToken(e.target.value)}
+                            placeholder="ptr_..."
+                            className="input w-full font-mono text-sm"
+                          />
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            Enter your Portainer API token (starts with ptr_)
+                          </p>
+                        </div>
+                      )}
 
                       <div className="flex gap-3">
                         <button
@@ -357,6 +425,7 @@ export default function Settings() {
                             setPortainerUrl('')
                             setPortainerUsername('')
                             setPortainerPassword('')
+                            setPortainerApiToken('')
                           }}
                           className="btn btn-secondary"
                         >

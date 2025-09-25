@@ -12,10 +12,10 @@ import {
   ClockIcon
 } from '@heroicons/react/24/outline'
 import api from '../../services/api'
-import { useWebSocketMetrics } from '../../hooks/useWebSocketMetrics'
-
 interface ServerStatsRealTimeProps {
   serverId: number
+  metrics?: any  // Metrics passed from parent
+  isConnected?: boolean  // WebSocket connection status from parent
 }
 
 interface ServerMetrics {
@@ -33,7 +33,7 @@ interface ServerMetrics {
   }
 }
 
-export default function ServerStatsRealTime({ serverId }: ServerStatsRealTimeProps) {
+export default function ServerStatsRealTime({ serverId, metrics: wsMetrics, isConnected: wsConnected }: ServerStatsRealTimeProps) {
   // Get saved preference from localStorage or default to polling
   const getSavedMode = () => {
     const saved = localStorage.getItem('metricsMode')
@@ -43,15 +43,9 @@ export default function ServerStatsRealTime({ serverId }: ServerStatsRealTimePro
   const [useWebSocket, setUseWebSocket] = useState(getSavedMode())
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
 
-  // WebSocket connection for real-time metrics
-  const { metrics: wsMetrics, isConnected, isConnecting, reconnect } = useWebSocketMetrics({
-    serverIds: [serverId],
-    enabled: useWebSocket,
-    onError: (error) => {
-      console.error('WebSocket error:', error)
-      // Don't automatically fall back to polling - let user control it
-    }
-  })
+  // Use parent's WebSocket connection status if available
+  const isConnected = wsConnected !== undefined ? wsConnected : false
+  const isConnecting = false  // Not needed when using parent's connection
 
   // Fallback polling when WebSocket is not available
   const { data: pollingMetrics, refetch, isFetching } = useQuery<ServerMetrics>(
@@ -64,7 +58,7 @@ export default function ServerStatsRealTime({ serverId }: ServerStatsRealTimePro
   )
 
   // Use WebSocket metrics if available, otherwise use polling
-  const metrics = useWebSocket && wsMetrics[serverId] ? wsMetrics[serverId] : pollingMetrics
+  const metrics = useWebSocket && wsMetrics ? wsMetrics : pollingMetrics
 
   // Update last update timestamp
   useEffect(() => {
@@ -86,9 +80,8 @@ export default function ServerStatsRealTime({ serverId }: ServerStatsRealTimePro
     localStorage.setItem('metricsMode', newMode ? 'websocket' : 'polling')
 
     if (newMode) {
-      // If switching to WebSocket, try to connect after a small delay
+      // Switching to WebSocket mode
       setTimeout(() => {
-        reconnect()
         setIsSwitching(false)
       }, 500)
     } else {
@@ -220,79 +213,88 @@ export default function ServerStatsRealTime({ serverId }: ServerStatsRealTimePro
       {/* Container Info & Connection Status */}
       <div className={`${hasGpu ? 'col-span-3' : 'col-span-2'} space-y-2`}>
         {/* Mode Toggle */}
-        <div className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
-          <div className="flex items-center space-x-3">
-            <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-              Update Mode:
-            </span>
-            <button
-              onClick={toggleMode}
-              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                useWebSocket
-                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
-                  : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-              }`}
-              title="Toggle update mode"
-            >
-              {useWebSocket ? (
-                <>
-                  <BoltIcon className="w-3 h-3 mr-1" />
-                  WebSocket
-                </>
-              ) : (
-                <>
-                  <ClockIcon className="w-3 h-3 mr-1" />
-                  Polling
-                </>
-              )}
-            </button>
-            {/* Connection status */}
-            <span className="flex items-center text-xs">
-              {useWebSocket ? (
-                isConnected ? (
+        <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+          <div className="flex items-center justify-between">
+            {/* Left side - Mode and Status on same line */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                Update Mode:
+              </span>
+              <button
+                onClick={toggleMode}
+                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                  useWebSocket
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                }`}
+                title="Toggle update mode"
+              >
+                {useWebSocket ? (
                   <>
-                    <WifiIcon className="h-3 w-3 mr-1 text-green-500" />
-                    <span className="text-green-600 dark:text-green-400">Connected</span>
-                  </>
-                ) : isConnecting ? (
-                  <>
-                    <ArrowPathIcon className="h-3 w-3 mr-1 animate-spin text-amber-500" />
-                    <span className="text-amber-600 dark:text-amber-400">Connecting...</span>
+                    <BoltIcon className="w-3 h-3 mr-1" />
+                    WebSocket
                   </>
                 ) : (
                   <>
-                    <XMarkIcon className="h-3 w-3 mr-1 text-red-500" />
-                    <span className="text-red-600 dark:text-red-400">Failed</span>
+                    <ClockIcon className="w-3 h-3 mr-1" />
+                    Polling
                   </>
-                )
-              ) : (
-                <>
-                  <ArrowPathIcon className={`h-3 w-3 mr-1 ${isFetching ? 'animate-spin' : ''} text-blue-500`} />
-                  <span className="text-blue-600 dark:text-blue-400">Active (2s)</span>
-                </>
-              )}
-            </span>
-          </div>
+                )}
+              </button>
 
-          <div className="flex items-center space-x-3">
-            {lastUpdate && (
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                {lastUpdate.toLocaleTimeString()}
-              </span>
-            )}
+              {/* Connection status - on same line */}
+              <div className="flex items-center text-xs ml-2">
+                {useWebSocket ? (
+                  isConnected ? (
+                    <>
+                      <WifiIcon className="h-3 w-3 mr-1 text-green-500" />
+                      <span className="text-green-600 dark:text-green-400 mr-3">Connected</span>
+                    </>
+                  ) : isConnecting ? (
+                    <>
+                      <ArrowPathIcon className="h-3 w-3 mr-1 animate-spin text-amber-500" />
+                      <span className="text-amber-600 dark:text-amber-400 mr-3">Connecting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <XMarkIcon className="h-3 w-3 mr-1 text-red-500" />
+                      <span className="text-red-600 dark:text-red-400 mr-3">Failed</span>
+                    </>
+                  )
+                ) : (
+                  <>
+                    <ArrowPathIcon className={`h-3 w-3 mr-1 ${isFetching ? 'animate-spin' : ''} text-blue-500`} />
+                    <span className="text-blue-600 dark:text-blue-400 mr-3">Active (2s)</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Right side - Refresh button */}
             <button
               onClick={() => {
-                if (useWebSocket && !isConnected) {
-                  reconnect()
-                } else if (!useWebSocket) {
+                if (!useWebSocket) {
                   refetch()
                 }
               }}
               className="text-xs text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+              title={useWebSocket ? "WebSocket auto-reconnects" : "Refresh"}
             >
               <ArrowPathIcon className="h-3 w-3" />
             </button>
           </div>
+
+          {/* Time display - below the status line */}
+          {lastUpdate && (
+            <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Last updated: {lastUpdate.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+              })}
+            </div>
+          )}
         </div>
 
         {/* Container Info */}

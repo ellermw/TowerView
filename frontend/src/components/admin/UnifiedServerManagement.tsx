@@ -84,6 +84,7 @@ export default function UnifiedServerManagement() {
 
   // Get all server IDs for WebSocket metrics
   const serverIds = servers.map(s => s.id)
+  console.log('UnifiedServerManagement - Server IDs:', serverIds)
 
   // Check if WebSocket mode is enabled
   const getWebSocketEnabled = () => {
@@ -96,6 +97,7 @@ export default function UnifiedServerManagement() {
     serverIds,
     enabled: getWebSocketEnabled() && serverIds.length > 0
   })
+  console.log('UnifiedServerManagement - WebSocket connected:', isConnected, 'Metrics:', Object.keys(wsMetrics || {}))
 
   // Group servers by type
   const groupedServers = useMemo(() => {
@@ -305,7 +307,11 @@ export default function UnifiedServerManagement() {
 
           {/* Real-time Stats */}
           <div className="border-t border-slate-200 dark:border-slate-700 -mx-6 px-6 pt-4">
-            <ServerStatsRealTime serverId={server.id} />
+            <ServerStatsRealTime
+              serverId={server.id}
+              metrics={wsMetrics[server.id]}
+              isConnected={isConnected}
+            />
           </div>
 
           {/* Action Buttons */}

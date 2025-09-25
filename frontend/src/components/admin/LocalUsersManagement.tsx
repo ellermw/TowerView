@@ -70,6 +70,47 @@ export default function LocalUsersManagement() {
         queryClient.invalidateQueries('local-users')
         setIsCreateModalOpen(false)
         resetForm()
+      },
+      onError: (error: any) => {
+        console.error('Error creating user:', error.response?.data)
+        let errorMessage = 'Failed to create user'
+
+        if (error.response?.data) {
+          const data = error.response.data
+
+          // Check for validation errors (422 responses)
+          if (Array.isArray(data)) {
+            // FastAPI validation errors come as an array
+            errorMessage = data.map((err: any) =>
+              `${err.loc ? err.loc.join(' > ') : ''}: ${err.msg}`
+            ).join('\n')
+          } else if (typeof data === 'object') {
+            // Check common error fields
+            if (data.detail) {
+              if (typeof data.detail === 'string') {
+                errorMessage = data.detail
+              } else if (Array.isArray(data.detail)) {
+                errorMessage = data.detail.map((err: any) =>
+                  typeof err === 'string' ? err :
+                  `${err.loc ? err.loc.join(' > ') : ''}: ${err.msg || err.type || JSON.stringify(err)}`
+                ).join('\n')
+              } else {
+                errorMessage = JSON.stringify(data.detail)
+              }
+            } else if (data.message) {
+              errorMessage = data.message
+            } else if (data.error) {
+              errorMessage = data.error
+            } else {
+              // Last resort - stringify the whole object
+              errorMessage = JSON.stringify(data)
+            }
+          } else if (typeof data === 'string') {
+            errorMessage = data
+          }
+        }
+
+        alert(errorMessage)
       }
     }
   )
@@ -464,9 +505,10 @@ export default function LocalUsersManagement() {
               </button>
               <button
                 onClick={handleCreateUser}
+                disabled={createUserMutation.isLoading}
                 className="btn btn-primary"
               >
-                Create User
+                {createUserMutation.isLoading ? 'Creating...' : 'Create User'}
               </button>
             </div>
           </div>
