@@ -71,7 +71,16 @@ async def fetch_server_metrics(
         integration = db.query(PortainerIntegration).filter_by(created_by_id=user_id).first()
 
         if not integration or not integration.api_token:
-            return {"error": "Portainer not configured"}
+            return {
+                "server_id": server_id,
+                "error": "Portainer not configured",
+                "cpu_usage": 0,
+                "memory_usage": 0,
+                "memory_used_gb": 0,
+                "memory_total_gb": 0,
+                "container": None,
+                "gpu": {"available": False}
+            }
 
         # Get container mapping
         mappings = integration.container_mappings or {}
@@ -90,36 +99,57 @@ async def fetch_server_metrics(
         container_id = server_mapping.get("container_id")
         container_name = server_mapping.get("container_name")
 
-        async with PortainerService(db) as service:
-            # Fetch CPU/Memory and GPU stats in parallel
-            stats_task = service.get_container_stats(
-                integration.url, integration.api_token, container_id, integration.endpoint_id
-            )
-            gpu_task = service.get_gpu_stats(
-                integration.url, integration.api_token, container_id, integration.endpoint_id
-            )
+        try:
+            async with PortainerService(db) as service:
+                # Fetch CPU/Memory and GPU stats in parallel
+                stats_task = service.get_container_stats(
+                    integration.url, integration.api_token, container_id, integration.endpoint_id
+                )
+                gpu_task = service.get_gpu_stats(
+                    integration.url, integration.api_token, container_id, integration.endpoint_id
+                )
 
-            stats, gpu_stats = await asyncio.gather(stats_task, gpu_task)
+                stats, gpu_stats = await asyncio.gather(stats_task, gpu_task, return_exceptions=True)
 
-            if not stats:
+                # Handle exceptions from gather
+                if isinstance(stats, Exception):
+                    logger.debug(f"Error fetching stats for server {server_id}: {stats}")
+                    stats = None
+                if isinstance(gpu_stats, Exception):
+                    logger.debug(f"Error fetching GPU stats for server {server_id}: {gpu_stats}")
+                    gpu_stats = {"available": False}
+
+                if not stats:
+                    return {
+                        "server_id": server_id,
+                        "cpu_usage": 0,
+                        "memory_usage": 0,
+                        "memory_used_gb": 0,
+                        "memory_total_gb": 0,
+                        "container": container_name,
+                        "gpu": {"available": False}
+                    }
+
                 return {
                     "server_id": server_id,
-                    "cpu_usage": 0,
-                    "memory_usage": 0,
-                    "memory_used_gb": 0,
-                    "memory_total_gb": 0,
-                    "gpu": {"available": False}
+                    "cpu_usage": stats.get("cpu_percent", 0),
+                    "memory_usage": stats.get("memory_percent", 0),
+                    "memory_used_gb": stats.get("memory_usage_mb", 0) / 1024,
+                    "memory_total_gb": stats.get("memory_limit_mb", 0) / 1024,
+                    "container": container_name,
+                    "timestamp": stats.get("timestamp"),
+                    "gpu": gpu_stats
                 }
-
+        except Exception as e:
+            logger.error(f"Error in fetch_server_metrics for server {server_id}: {e}")
             return {
                 "server_id": server_id,
-                "cpu_usage": stats.get("cpu_percent", 0),
-                "memory_usage": stats.get("memory_percent", 0),
-                "memory_used_gb": stats.get("memory_usage_mb", 0) / 1024,
-                "memory_total_gb": stats.get("memory_limit_mb", 0) / 1024,
-                "container": container_name,
-                "timestamp": stats.get("timestamp"),
-                "gpu": gpu_stats
+                "cpu_usage": 0,
+                "memory_usage": 0,
+                "memory_used_gb": 0,
+                "memory_total_gb": 0,
+                "container": container_name if 'container_name' in locals() else None,
+                "gpu": {"available": False}
             }
     finally:
         db.close()
@@ -142,6 +172,12 @@ async def metrics_streamer(
             ]
 
             metrics_list = await asyncio.gather(*tasks)
+
+            # Debug log
+            logger.info(f"Sending metrics to {client_id}: {len(metrics_list)} server metrics")
+            for m in metrics_list[:2]:  # Log first 2
+                if isinstance(m, dict):
+                    logger.debug(f"  Server {m.get('server_id', 'unknown')}: CPU={m.get('cpu_usage', 0):.1f}%, Mem={m.get('memory_usage', 0):.1f}%")
 
             # Send to client
             await manager.send_metrics(client_id, {
