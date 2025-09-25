@@ -19,7 +19,7 @@ class Server(Base):
     name = Column(String, nullable=False)
     type = Column(Enum(ServerType), nullable=False)
     base_url = Column(String, nullable=False)
-    group_id = Column(Integer, ForeignKey("groups.id"), nullable=True)
+    group_id = Column(Integer, nullable=True)  # Keep column for backward compatibility but remove FK
     enabled = Column(Boolean, default=True)
     last_seen_at = Column(DateTime(timezone=True), nullable=True)
     server_metadata = Column(JSON, nullable=True)
@@ -28,7 +28,6 @@ class Server(Base):
 
     # Relationships
     owner = relationship("User", foreign_keys=[owner_id])
-    group = relationship("Group", back_populates="servers")
     credentials = relationship("Credential", back_populates="server", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="server")
     media = relationship("Media", back_populates="server")

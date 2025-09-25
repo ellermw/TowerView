@@ -8,24 +8,16 @@ from sqlalchemy.orm import Session
 from .celery_app import celery_app
 from .database import get_db
 
-# Import shared models (assuming they're copied during build)
-try:
-    from shared.models.server import Server
-    from shared.models.session import Session as MediaSession
-    from shared.models.media import Media
-    from shared.models.user import User
-    from shared.providers.factory import ProviderFactory
-except ImportError:
-    # Fallback for development
-    import sys
-    import os
-    backend_path = os.path.join(os.path.dirname(__file__), '../../backend')
-    sys.path.append(backend_path)
-    from app.models.server import Server
-    from app.models.session import Session as MediaSession
-    from app.models.media import Media
-    from app.models.user import User
-    from app.providers.factory import ProviderFactory
+# Import shared models
+import sys
+import os
+# Add backend to path
+sys.path.insert(0, '/backend')
+from app.models.server import Server
+from app.models.session import Session as MediaSession
+from app.models.media import Media
+from app.models.user import User
+from app.providers.factory import ProviderFactory
 
 logger = logging.getLogger(__name__)
 

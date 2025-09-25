@@ -44,8 +44,10 @@ services:
     environment:
       DATABASE_URL: postgresql://mediaapp:change_me@db:5432/mediaapp
       REDIS_URL: redis://redis:6379
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-me}
     volumes:
       - ./worker:/app
+      - ./backend:/backend
 
   worker-beat:
     build: ./worker
@@ -55,8 +57,10 @@ services:
     environment:
       DATABASE_URL: postgresql://mediaapp:change_me@db:5432/mediaapp
       REDIS_URL: redis://redis:6379
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-me}
     volumes:
       - ./worker:/app
+      - ./backend:/backend
     command: python main.py beat
 
   frontend:
