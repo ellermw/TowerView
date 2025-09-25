@@ -9,7 +9,7 @@ from .celery_app import celery_app
 from .database import get_db
 
 # Import shared models from local simplified version
-from .models import Server, ServerType, Session as MediaSession, Media, User, Credential
+from .models import Server, ServerType, ProviderType, Session as MediaSession, Media, User, Credential
 
 logger = logging.getLogger(__name__)
 
@@ -162,9 +162,11 @@ async def find_or_create_user(session_data: dict, server: Server, db: Session):
 
     if not user:
         # Create new media user
+        # Convert ServerType to ProviderType (they have the same values)
+        provider_type = ProviderType[server.type.name]
         user = User(
             type='media_user',
-            provider=server.type,
+            provider=provider_type,
             provider_user_id=provider_user_id,
             server_id=server.id,
             username=session_data.get('username', f'user_{provider_user_id}')

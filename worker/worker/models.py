@@ -27,6 +27,11 @@ class UserType(enum.Enum):
     admin = "admin"
     media_user = "media_user"
 
+class ProviderType(enum.Enum):
+    plex = "plex"
+    emby = "emby"
+    jellyfin = "jellyfin"
+
 # Define models directly to avoid import issues
 class Server(Base):
     __tablename__ = "servers"
@@ -52,7 +57,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     type = Column(Enum(UserType), nullable=False, default=UserType.media_user)
-    provider = Column(Enum(ServerType), nullable=True)
+    provider = Column(Enum(ProviderType), nullable=True)
     provider_user_id = Column(String, nullable=True)
     server_id = Column(Integer, ForeignKey("servers.id", ondelete="CASCADE"), nullable=True)
     username = Column(String, nullable=False, index=True)
