@@ -1,7 +1,6 @@
 from ..core.database import Base
 from .user import User
 from .server import Server
-from .group import Group
 from .credential import Credential
 from .session import Session
 from .media import Media
@@ -12,7 +11,6 @@ __all__ = [
     "Base",
     "User",
     "Server",
-    "Group",
     "Credential",
     "Session",
     "Media",

@@ -1,0 +1,50 @@
+# Multi-stage build for optimized production image
+FROM node:18-alpine AS frontend-build
+
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci --only=production
+COPY frontend/ .
+RUN npm run build
+
+# Python application stage
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    nginx \
+    supervisor \
+    redis-server \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy Python requirements and install
+COPY backend/requirements.txt .
+COPY worker/requirements.txt worker-requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r worker-requirements.txt && \
+    pip install gunicorn
+
+# Copy application code
+COPY backend/ ./backend/
+COPY worker/ ./worker/
+
+# Copy frontend build
+COPY --from=frontend-build /app/frontend/dist /app/static
+
+# Copy nginx configuration
+COPY nginx.production.conf /etc/nginx/sites-available/default
+
+# Copy supervisor configuration
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Create startup script
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+EXPOSE 80
+
+CMD ["/app/start.sh"]

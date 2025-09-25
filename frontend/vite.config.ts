@@ -19,6 +19,16 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: false,
+    minify: 'terser',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          ui: ['@headlessui/react', '@heroicons/react'],
+          utils: ['axios', 'date-fns', 'classnames'],
+        },
+      },
+    },
   },
 })
