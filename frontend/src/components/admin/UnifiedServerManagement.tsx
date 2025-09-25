@@ -88,8 +88,7 @@ export default function UnifiedServerManagement() {
   // Check if WebSocket mode is enabled
   const getWebSocketEnabled = () => {
     const saved = localStorage.getItem('metricsMode')
-    const isNginx = window.location.port === '8080' || window.location.port === '80' || window.location.port === ''
-    return saved === 'websocket' && isNginx
+    return saved === 'websocket'
   }
 
   // WebSocket metrics for all servers
@@ -388,15 +387,22 @@ export default function UnifiedServerManagement() {
 
         {/* Connection Status */}
         <div className="mt-4 flex items-center text-sm">
-          {isConnected ? (
-            <span className="flex items-center text-green-600 dark:text-green-400">
-              <CheckCircleIcon className="w-4 h-4 mr-1" />
-              Real-time metrics active
-            </span>
+          {getWebSocketEnabled() ? (
+            isConnected ? (
+              <span className="flex items-center text-green-600 dark:text-green-400">
+                <CheckCircleIcon className="w-4 h-4 mr-1" />
+                WebSocket connected - Real-time metrics active
+              </span>
+            ) : (
+              <span className="flex items-center text-amber-600 dark:text-amber-400">
+                <ExclamationTriangleIcon className="w-4 h-4 mr-1" />
+                WebSocket connecting...
+              </span>
+            )
           ) : (
-            <span className="flex items-center text-amber-600 dark:text-amber-400">
-              <ExclamationTriangleIcon className="w-4 h-4 mr-1" />
-              Using polling mode
+            <span className="flex items-center text-blue-600 dark:text-blue-400">
+              <ArrowPathIcon className="w-4 h-4 mr-1" />
+              Polling mode (2s intervals)
             </span>
           )}
         </div>

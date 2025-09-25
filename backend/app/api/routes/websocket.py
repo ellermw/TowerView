@@ -167,26 +167,42 @@ async def websocket_metrics(
     # Get token and servers from the first message
     try:
         initial_data = await websocket.receive_text()
+        logger.info(f"Received initial data: {initial_data[:100]}...")  # Log first 100 chars
         initial_msg = json.loads(initial_data)
 
         token = initial_msg.get("token")
         servers = initial_msg.get("servers", [])
 
+        logger.info(f"Token present: {bool(token)}, Servers: {servers}")
+
         # Authenticate user from token
-        user = await get_current_user_from_token(token, db)
-        if not user or user.type != 'admin':
+        user = get_current_user_from_token(token, db)
+        if not user:
+            logger.error("User not found from token")
             await websocket.close(code=4003, reason="Unauthorized")
             return
+
+        # Compare enum values properly
+        from ...models.user import UserType
+        if user.type != UserType.admin:
+            logger.error(f"User is not admin: {user.type}")
+            await websocket.close(code=4003, reason="Unauthorized")
+            return
+
+        logger.info(f"Authenticated user: {user.username} (ID: {user.id})")
     except Exception as e:
-        logger.error(f"Initial auth error: {e}")
+        logger.error(f"Initial auth error: {e}", exc_info=True)
         await websocket.close(code=4003, reason="Invalid initial message")
         return
 
     client_id = f"user_{user.id}"
     server_ids = servers if isinstance(servers, list) else []
 
-    # Connect client
-    await manager.connect(websocket, client_id)
+    # Register client (without accepting again)
+    if client_id not in manager.active_connections:
+        manager.active_connections[client_id] = set()
+    manager.active_connections[client_id].add(websocket)
+    logger.info(f"Client {client_id} connected. Total connections: {len(manager.active_connections[client_id])}")
 
     try:
         # Start metrics streaming task if not already running

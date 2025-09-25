@@ -93,7 +93,7 @@ async def get_current_media_user(current_user: User = Depends(get_current_user))
     return current_user
 
 
-async def get_current_user_from_token(token: str, db: Session) -> Optional[User]:
+def get_current_user_from_token(token: str, db: Session) -> Optional[User]:
     """Get user from a raw token string (used for WebSocket auth)"""
     payload = verify_token(token)
 

@@ -69,13 +69,17 @@ export function useWebSocketMetrics({
 
       ws.onopen = () => {
         console.log('WebSocket connected, sending auth...')
+        console.log('Token available:', !!token)
+        console.log('Server IDs:', serverIds)
         setIsConnecting(false)
 
         // Send authentication and server list as first message
-        ws.send(JSON.stringify({
+        const authMessage = {
           token: token,
           servers: serverIds
-        }))
+        }
+        console.log('Sending auth message:', authMessage)
+        ws.send(JSON.stringify(authMessage))
 
         setIsConnected(true)
         reconnectAttemptsRef.current = 0

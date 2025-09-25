@@ -37,10 +37,7 @@ export default function ServerStatsRealTime({ serverId }: ServerStatsRealTimePro
   // Get saved preference from localStorage or default to polling
   const getSavedMode = () => {
     const saved = localStorage.getItem('metricsMode')
-    // Check if we're accessing through nginx (required for WebSocket)
-    const isNginx = window.location.port === '8080' || window.location.port === '80' || window.location.port === ''
-    // Only enable WebSocket if saved AND accessing through proper port
-    return saved === 'websocket' && isNginx
+    return saved === 'websocket'
   }
 
   const [useWebSocket, setUseWebSocket] = useState(getSavedMode())
@@ -79,18 +76,9 @@ export default function ServerStatsRealTime({ serverId }: ServerStatsRealTimePro
   // Track if we're switching modes to prevent rapid toggling
   const [isSwitching, setIsSwitching] = useState(false)
 
-  // Check if we're accessing through nginx (required for WebSocket)
-  const isNginx = window.location.port === '8080' || window.location.port === '80' || window.location.port === ''
-
   // Save mode preference when it changes
   const toggleMode = () => {
     if (isSwitching) return // Prevent rapid toggling
-
-    // Don't allow WebSocket mode if not through nginx
-    if (!isNginx && !useWebSocket) {
-      alert('WebSocket mode requires accessing the app through port 8080. Currently using port ' + (window.location.port || '80'))
-      return
-    }
 
     setIsSwitching(true)
     const newMode = !useWebSocket
@@ -243,8 +231,8 @@ export default function ServerStatsRealTime({ serverId }: ServerStatsRealTimePro
                 useWebSocket
                   ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
                   : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-              } ${!isNginx && !useWebSocket ? 'opacity-50' : ''}`}
-              title={!isNginx ? 'WebSocket requires accessing through port 8080' : 'Toggle update mode'}
+              }`}
+              title="Toggle update mode"
             >
               {useWebSocket ? (
                 <>

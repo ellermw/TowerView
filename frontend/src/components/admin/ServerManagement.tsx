@@ -228,7 +228,7 @@ export default function ServerManagement() {
                       <tr key={`${server.id}-stats`}>
                         <td colSpan={5} className="px-6 py-0 bg-slate-50 dark:bg-slate-900">
                           <div className="border-l-4 border-primary-500 ml-8">
-                            <ServerStatsRealTime serverId={server.id} serverName={server.name} />
+                            <ServerStatsRealTime serverId={server.id} />
                           </div>
                         </td>
                       </tr>
