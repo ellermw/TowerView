@@ -1,25 +1,33 @@
-# TowerView - Multi-Server Media Monitoring
+# TowerView - Multi-Server Media Monitoring & Management Platform
 
-A comprehensive media server monitoring and management application for Plex, Emby, and Jellyfin servers. TowerView provides real-time session monitoring, user management, and analytics across multiple media servers from a single dashboard.
+A comprehensive media server monitoring and management application for Plex, Emby, and Jellyfin servers. TowerView provides real-time session monitoring, user management, server analytics, and Docker container control through a unified dashboard.
 
 ## 🎯 Features
 
+### Core Features
 - **🔗 Multi-Server Support**: Monitor multiple Plex, Emby, and Jellyfin servers from a single interface
 - **🔐 Dual Authentication**: Admin login and media user login using provider credentials
-- **⚡ Real-time Monitoring**: Live session tracking with WebSocket updates
+- **⚡ Real-time Monitoring**: Live session tracking with configurable polling or WebSocket updates
 - **🎛️ Admin Controls**: Terminate sessions and manage user access across servers
 - **📊 User Dashboard**: Personal watch history and statistics for media users
-- **📁 Server Grouping**: Organize servers into logical groups
-- **📋 Audit Logging**: Track all administrative actions
-- **🔒 Encrypted Credentials**: Secure storage of provider credentials
 - **🌐 Modern UI**: Responsive design with dark mode support
+
+### New Advanced Features
+- **📈 Server Analytics**: Real-time CPU, Memory, and GPU usage monitoring via Portainer integration
+- **🐳 Docker Container Control**: Start, stop, and restart media server containers directly from the UI
+- **🔄 Dual Update Modes**: Choose between WebSocket (real-time) or polling (2-second intervals)
+- **🗂️ Unified Server Management**: Combined server list and analytics view grouped by server type
+- **👥 Local User Management**: Create and manage local application users with permissions
+- **⚙️ Settings Integration**: Configure Portainer, Netdata Cloud, and container mappings
+- **📱 Responsive Server Cards**: Visual server status with inline metrics and controls
+- **🎨 Server Type Theming**: Color-coded server cards by type (Plex/Emby/Jellyfin)
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   React Frontend │    │  FastAPI Backend │    │ Background Worker│
-│  (TailwindCSS)  │◄──►│  (PostgreSQL)   │◄──►│   (Celery)      │
+│  (Vite + TS)    │◄──►│  (PostgreSQL)   │◄──►│   (Celery)      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
          │                       │                       │
          │              ┌─────────────────┐              │
@@ -28,71 +36,118 @@ A comprehensive media server monitoring and management application for Plex, Emb
                         └─────────────────┘
                                  │
                         ┌─────────────────┐
-                        │  Media Servers  │
-                        │ Plex/Emby/Jellyfin│
+                        │     Nginx       │
+                        │ (Reverse Proxy) │
                         └─────────────────┘
+                                 │
+                ┌────────────────┴────────────────┐
+                │                                 │
+        ┌─────────────────┐            ┌─────────────────┐
+        │  Media Servers  │            │   Portainer     │
+        │Plex/Emby/Jellyfin│           │ (Docker Mgmt)   │
+        └─────────────────┘            └─────────────────┘
 ```
 
 ## 🚀 Quick Start
 
-### Option 1: Automated Setup (Recommended)
+### Using Docker Compose (Recommended)
 
 ```bash
-git clone <repository-url>
-cd towerview
-chmod +x scripts/setup.sh
-./scripts/setup.sh
-```
+# 1. Clone the repository
+git clone https://github.com/yourusername/TowerView.git
+cd TowerView
 
-### Option 2: Manual Setup
-
-```bash
-# 1. Clone and setup environment
-git clone <repository-url>
-cd towerview
+# 2. Configure environment
 cp .env.example .env
 # Edit .env with your configuration
 
-# 2. Start with Docker Compose
-make dev
+# 3. Start the application
+docker-compose up -d
 
-# 3. Access the application
-# Frontend: http://localhost:3000
+# 4. Access the application
+# Through nginx (WebSocket support): http://localhost:8080
+# Direct frontend access: http://localhost:3002
 # Backend API: http://localhost:8000
-# API Docs: http://localhost:8000/docs
+# API Documentation: http://localhost:8000/docs
 ```
+
+### First-Time Setup
+
+1. Access the application at `http://localhost:8080`
+2. Login with default credentials:
+   - Username: `admin`
+   - Password: `admin` (change immediately)
+3. Navigate to Settings to configure:
+   - Portainer integration for server metrics
+   - Container mappings for Docker control
+4. Add your media servers in the Servers section
 
 ## 📁 Project Structure
 
 ```
-towerview/
-├── backend/              # FastAPI backend application
+TowerView/
+├── backend/                 # FastAPI backend application
 │   ├── app/
-│   │   ├── api/         # API routes
-│   │   ├── core/        # Core functionality (auth, config, database)
-│   │   ├── models/      # SQLAlchemy models
-│   │   ├── providers/   # Media server connectors
-│   │   ├── schemas/     # Pydantic schemas
-│   │   └── services/    # Business logic
-│   ├── alembic/         # Database migrations
+│   │   ├── api/            # API routes
+│   │   │   └── routes/     # Organized route modules
+│   │   │       ├── admin.py
+│   │   │       ├── auth.py
+│   │   │       ├── media_user.py
+│   │   │       ├── settings.py
+│   │   │       └── websocket.py
+│   │   ├── core/           # Core functionality
+│   │   │   ├── auth.py
+│   │   │   ├── config.py
+│   │   │   ├── database.py
+│   │   │   ├── security.py
+│   │   │   └── token_cache.py
+│   │   ├── models/         # SQLAlchemy models
+│   │   │   ├── server.py
+│   │   │   ├── session.py
+│   │   │   ├── user.py
+│   │   │   ├── settings.py
+│   │   │   └── user_permission.py
+│   │   ├── providers/      # Media server connectors
+│   │   │   ├── plex.py
+│   │   │   ├── emby.py
+│   │   │   └── jellyfin.py
+│   │   ├── schemas/        # Pydantic schemas
+│   │   └── services/       # Business logic
+│   │       ├── auth_service.py
+│   │       ├── portainer_service.py
+│   │       ├── netdata_service.py
+│   │       └── netdata_cloud_service.py
+│   ├── alembic/            # Database migrations
 │   └── requirements.txt
-├── frontend/             # React frontend application
+├── frontend/                # React frontend (Vite + TypeScript)
 │   ├── src/
-│   │   ├── components/  # React components
-│   │   ├── pages/       # Page components
-│   │   ├── services/    # API services
-│   │   ├── store/       # State management
-│   │   └── utils/       # Utilities
-│   └── package.json
-├── worker/               # Background worker
+│   │   ├── components/     # React components
+│   │   │   ├── admin/      # Admin components
+│   │   │   │   ├── AdminHome.tsx
+│   │   │   │   ├── UnifiedServerManagement.tsx
+│   │   │   │   ├── ServerStatsRealTime.tsx
+│   │   │   │   ├── ServerModal.tsx
+│   │   │   │   ├── SessionsList.tsx
+│   │   │   │   ├── UsersList.tsx
+│   │   │   │   ├── LocalUsersManagement.tsx
+│   │   │   │   └── Settings.tsx
+│   │   │   └── Layout.tsx
+│   │   ├── hooks/          # Custom React hooks
+│   │   │   └── useWebSocketMetrics.ts
+│   │   ├── pages/          # Page components
+│   │   ├── services/       # API services
+│   │   ├── store/          # State management (Zustand)
+│   │   └── utils/          # Utilities
+│   ├── package.json
+│   └── vite.config.ts
+├── worker/                  # Background worker
 │   └── worker/
-│       ├── tasks.py     # Celery tasks
+│       ├── tasks.py        # Celery tasks
 │       └── celery_app.py
-├── nginx/                # Nginx configuration
-├── scripts/              # Setup and utility scripts
-├── docker-compose.yml    # Development environment
-├── docker-compose.prod.yml # Production environment
-└── Makefile             # Development commands
+├── nginx/                   # Nginx configuration
+│   └── nginx.conf          # WebSocket-enabled config
+├── docker-compose.yml       # Development environment
+└── .env.example            # Environment template
 ```
 
 ## 🛠️ Development
@@ -106,250 +161,157 @@ towerview/
 ### Development Commands
 
 ```bash
-# Start development environment
-make dev
+# Start all services
+docker-compose up -d
 
 # View logs
-make logs
-make logs-backend
-make logs-worker
-make logs-frontend
+docker-compose logs -f [service]
+# Services: backend, frontend, worker, worker-beat, db, redis, nginx
+
+# Rebuild after changes
+docker-compose build [service]
+docker-compose restart [service]
 
 # Database operations
-make db-migrate
-make db-create-migration MESSAGE="your migration message"
-make db-reset
+docker exec towerview-backend-1 alembic upgrade head  # Run migrations
+docker exec towerview-backend-1 alembic revision --autogenerate -m "description"  # Create migration
 
 # Shell access
-make shell-backend
-make shell-worker
-make shell-db
+docker exec -it towerview-backend-1 bash
+docker exec -it towerview-frontend-1 sh
 
-# Health check
-make health
-
-# Cleanup
-make clean
-make clean-all
-```
-
-### Local Development Setup
-
-#### Backend
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# Setup database
-export DATABASE_URL="postgresql://user:pass@localhost/towerview"
-alembic upgrade head
-
-# Run development server
-uvicorn app.main:app --reload
-```
-
-#### Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-#### Worker
-```bash
-cd worker
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# Start worker
-celery -A worker.celery_app worker --loglevel=info
-
-# Start scheduler (in another terminal)
-celery -A worker.celery_app beat --loglevel=info
+# Stop all services
+docker-compose down
 ```
 
 ## 🔧 Configuration
 
 ### Environment Variables
 
-Copy `.env.example` to `.env` and configure:
+Key configuration in `.env`:
 
 ```bash
 # Database
-DATABASE_URL=postgresql://mediaapp:change_me@localhost:5432/mediaapp
+DATABASE_URL=postgresql://mediaapp:change_me@db:5432/mediaapp
 
 # Redis
-REDIS_URL=redis://localhost:6379
+REDIS_URL=redis://redis:6379
 
 # Security
 SECRET_KEY=your-very-secure-secret-key-here
-JWT_SECRET_KEY=your-jwt-secret-key-here
-
-# Admin Account
 ADMIN_USERNAME=admin
-ADMIN_PASSWORD=secure_password_here
+ADMIN_PASSWORD=admin  # Change in production!
 
-# API Configuration
-API_HOST=0.0.0.0
-API_PORT=8000
-
-# Frontend
-REACT_APP_API_URL=http://localhost:8000
+# Frontend (if using custom API URL)
+VITE_API_URL=  # Leave empty for default proxy
 ```
 
-### Provider Configuration
+### Portainer Integration
 
-After starting the application, add your media servers through the admin interface:
+1. Install Portainer on your Docker host
+2. Generate an API token in Portainer
+3. Configure in TowerView Settings:
+   - Portainer URL: `https://portainer.your-domain.com`
+   - API Token: Your generated token
+   - Map containers to media servers
 
-1. Login as admin
-2. Navigate to "Servers" section
-3. Click "Add Server"
-4. Provide server details and API credentials
+### WebSocket vs Polling Mode
 
-#### Getting API Credentials
+- **Polling Mode (Default)**: Updates every 2 seconds, works everywhere
+- **WebSocket Mode**: Real-time updates at 500ms intervals
+  - Requires access through nginx (port 8080)
+  - Enable by clicking the mode toggle in server cards
 
-**Plex:**
-- Go to Plex Web App → Settings → Account → Privacy → "Show Advanced"
-- Copy your X-Plex-Token from the URL
+## 📊 API Endpoints
 
-**Emby:**
-- Dashboard → API Keys → Create new API key
+### Core Endpoints
+- `POST /api/auth/login` - User authentication
+- `GET /api/admin/servers` - List all servers
+- `GET /api/admin/sessions` - List active sessions
+- `DELETE /api/admin/sessions/{id}/terminate` - Terminate session
+- `GET /api/admin/users` - List media users
 
-**Jellyfin:**
-- Dashboard → API Keys → Create new API key
+### Settings & Metrics
+- `GET /api/settings/portainer/metrics/{server_id}` - Get server metrics
+- `POST /api/settings/portainer/container/{server_id}/action` - Container control
+- `GET /api/settings/portainer/containers` - List Docker containers
+- `POST /api/settings/portainer/auth` - Configure Portainer
+
+### WebSocket
+- `WS /api/ws/metrics` - Real-time metrics streaming
 
 ## 🚢 Production Deployment
 
-### Using Docker Compose (Recommended)
+### Using Docker Compose
 
 ```bash
-# 1. Create production environment file
-cp .env.example .env
-# Edit .env with production values
+# 1. Configure production environment
+cp .env.example .env.prod
+# Edit with production values
 
 # 2. Generate secure secrets
-openssl rand -base64 32  # Use for SECRET_KEY
-openssl rand -base64 16  # Use for ADMIN_PASSWORD
+openssl rand -base64 32  # For SECRET_KEY
 
-# 3. Deploy
-make prod
+# 3. Update docker-compose.yml for production
+# - Remove volume mounts for source code
+# - Set restart policies
+# - Configure SSL in nginx
 
-# 4. Check status
-docker-compose -f docker-compose.prod.yml ps
-make prod-logs
+# 4. Deploy
+docker-compose -f docker-compose.prod.yml up -d
+
+# 5. Set up SSL with Let's Encrypt
+# Configure nginx with SSL certificates
 ```
 
-### Production Environment Variables
+### Nginx WebSocket Configuration
 
-```bash
-# Required for production
-SECRET_KEY=your-production-secret-key
-POSTGRES_PASSWORD=your-secure-db-password
-ADMIN_PASSWORD=your-admin-password
+The included nginx configuration supports WebSocket connections for real-time updates:
 
-# Optional
-POSTGRES_USER=mediaapp
-POSTGRES_DB=mediaapp
-REACT_APP_API_URL=https://your-domain.com
+```nginx
+location /api/ws/ {
+    proxy_pass http://backend/api/ws/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 86400s;
+}
 ```
 
-### SSL/HTTPS Setup
+## 🔐 Security Features
 
-1. Obtain SSL certificates (Let's Encrypt recommended)
-2. Place certificates in `nginx/ssl/`
-3. Update `nginx/nginx.conf` to enable HTTPS
-4. Update `REACT_APP_API_URL` to use HTTPS
-
-## 📊 Usage
-
-### Admin Interface
-
-- **Dashboard**: Overview of all servers and active sessions
-- **Servers**: Add, configure, and manage media servers
-- **Sessions**: View and terminate active playback sessions
-- **Users**: Manage media users across servers
-- **Audit Logs**: Review administrative actions
-
-### Media User Interface
-
-- **Dashboard**: Personal session overview and statistics
-- **Watch History**: Browse past viewing sessions
-- **Statistics**: Detailed viewing analytics
-
-### API Endpoints
-
-- `GET /api/admin/sessions` - List all active sessions
-- `POST /api/admin/servers` - Add new server
-- `DELETE /api/admin/sessions/{id}/terminate` - Terminate session
-- `GET /api/me/stats` - Get user statistics
-- `WebSocket /api/ws` - Real-time updates
-
-## 🔐 Security
-
-- **Encrypted Credentials**: All provider credentials are encrypted before storage
-- **JWT Authentication**: Secure token-based authentication
-- **RBAC**: Role-based access control (admin vs media user)
-- **Rate Limiting**: API rate limiting via Nginx
-- **Audit Logging**: All admin actions are logged
-- **CORS Protection**: Configured CORS policies
+- **Encrypted Credentials**: All provider credentials encrypted with Fernet
+- **JWT Authentication**: Secure token-based auth with refresh tokens
+- **RBAC**: Role-based access (admin, media user, local user)
+- **Rate Limiting**: Configured in nginx
+- **CORS Protection**: Restrictive CORS policies
 - **SQL Injection Protection**: SQLAlchemy ORM with parameterized queries
+- **XSS Protection**: React's built-in XSS protection
+- **Secure Headers**: Security headers configured in nginx
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+### Metrics Not Loading
+- Ensure Portainer is configured in Settings
+- Check container mappings are correct
+- Verify Portainer API token is valid
+- Check browser console for errors
 
-**Database Connection Error:**
-```bash
-# Check if database is running
-docker-compose ps db
+### WebSocket Connection Issues
+- Access the app through nginx (port 8080), not direct (port 3002)
+- Check browser console for WebSocket errors
+- Ensure nginx is running: `docker ps | grep nginx`
 
-# View database logs
-docker-compose logs db
-
-# Reset database
-make db-reset
-```
-
-**Worker Not Polling:**
-```bash
-# Check worker status
-docker-compose logs worker
-
-# Restart worker
-docker-compose restart worker worker-beat
-```
-
-**Frontend Build Issues:**
-```bash
-# Clear node modules and reinstall
-cd frontend
-rm -rf node_modules package-lock.json
-npm install
-```
-
-### Logs
-
-```bash
-# All services
-make logs
-
-# Specific service
-make logs-backend
-make logs-worker
-make logs-frontend
-
-# Follow logs in real-time
-docker-compose logs -f
-```
+### Container Control Not Working
+- Verify Portainer integration in Settings
+- Check user has admin permissions
+- Ensure Docker socket is accessible to Portainer
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
@@ -359,7 +321,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- [Tautulli](https://tautulli.com/) for inspiration
-- [FastAPI](https://fastapi.tiangolo.com/) for the excellent framework
-- [React](https://reactjs.org/) and [TailwindCSS](https://tailwindcss.com/) for the frontend
+- [FastAPI](https://fastapi.tiangolo.com/) for the excellent backend framework
+- [React](https://reactjs.org/) and [Vite](https://vitejs.dev/) for the frontend
+- [TailwindCSS](https://tailwindcss.com/) for styling
+- [Portainer](https://www.portainer.io/) for Docker management
 - [Plex](https://www.plex.tv/), [Emby](https://emby.media/), and [Jellyfin](https://jellyfin.org/) for their APIs

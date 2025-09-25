@@ -6,7 +6,11 @@ import {
   ExclamationTriangleIcon,
   EyeSlashIcon,
   ClockIcon,
-  ServerIcon
+  ServerIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  KeyIcon,
+  FolderIcon
 } from '@heroicons/react/24/outline'
 import api from '../../services/api'
 
@@ -30,7 +34,11 @@ interface ServerUser {
 }
 
 export default function UsersList() {
-  const [refreshInterval, setRefreshInterval] = useState(30000) // 30 seconds
+  const [refreshInterval] = useState(30000) // 30 seconds
+  const [collapsedServers, setCollapsedServers] = useState<Set<string>>(new Set())
+  const [selectedUser, setSelectedUser] = useState<ServerUser | null>(null)
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
+  const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false)
 
   const { data: users = [], isLoading, error } = useQuery<ServerUser[]>(
     'admin-users',
@@ -83,8 +91,30 @@ export default function UsersList() {
     }
   }
 
-  const getServerTypeIcon = (serverType?: string) => {
+  const getServerTypeIcon = (_serverType?: string) => {
     return <ServerIcon className="h-4 w-4" />
+  }
+
+  const toggleServerCollapse = (serverKey: string) => {
+    setCollapsedServers(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(serverKey)) {
+        newSet.delete(serverKey)
+      } else {
+        newSet.add(serverKey)
+      }
+      return newSet
+    })
+  }
+
+  const openPasswordModal = (user: ServerUser) => {
+    setSelectedUser(user)
+    setIsPasswordModalOpen(true)
+  }
+
+  const openLibraryModal = (user: ServerUser) => {
+    setSelectedUser(user)
+    setIsLibraryModalOpen(true)
   }
 
   if (isLoading) {
@@ -107,15 +137,19 @@ export default function UsersList() {
     )
   }
 
-  // Group users by server
-  const usersByServer = users.reduce((acc, user) => {
-    const serverKey = `${user.server_name} (${user.server_type})`
-    if (!acc[serverKey]) {
-      acc[serverKey] = []
+  // Group users first by server type, then by server name
+  const usersByServerType = users.reduce((acc, user) => {
+    const serverType = user.server_type || 'unknown'
+    if (!acc[serverType]) {
+      acc[serverType] = {}
     }
-    acc[serverKey].push(user)
+    const serverName = user.server_name || 'Unknown Server'
+    if (!acc[serverType][serverName]) {
+      acc[serverType][serverName] = []
+    }
+    acc[serverType][serverName].push(user)
     return acc
-  }, {} as Record<string, ServerUser[]>)
+  }, {} as Record<string, Record<string, ServerUser[]>>)
 
   return (
     <div className="px-4 py-6 sm:px-6">
@@ -146,21 +180,43 @@ export default function UsersList() {
           </div>
         </div>
       ) : (
-        <div className="mt-8 space-y-8">
-          {Object.entries(usersByServer).map(([serverName, serverUsers]) => (
-            <div key={serverName} className="space-y-4">
-              <div className="flex items-center">
-                {getServerTypeIcon(serverUsers[0]?.server_type)}
-                <h2 className="ml-2 text-lg font-medium text-slate-900 dark:text-white">
-                  {serverName}
+        <div className="mt-8 space-y-12">
+          {Object.entries(usersByServerType).sort(([a], [b]) => a.localeCompare(b)).map(([serverType, serversByName]) => (
+            <div key={serverType} className="space-y-8">
+              {/* Server Type Header */}
+              <div className="border-b border-slate-200 dark:border-slate-700 pb-2">
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-white capitalize">
+                  {serverType} Servers
                 </h2>
-                <span className="ml-2 text-sm text-slate-500 dark:text-slate-400">
-                  ({serverUsers.length} users)
-                </span>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {serverUsers.map((user) => (
+              {/* Servers within this type */}
+              {Object.entries(serversByName).map(([serverName, serverUsers]) => {
+                const serverKey = `${serverType}-${serverName}`
+                const isCollapsed = collapsedServers.has(serverKey)
+
+                return (
+                  <div key={serverKey} className="space-y-4">
+                    <div
+                      className="flex items-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 p-2 rounded-lg transition-colors"
+                      onClick={() => toggleServerCollapse(serverKey)}
+                    >
+                      {isCollapsed ?
+                        <ChevronRightIcon className="h-5 w-5 text-slate-500" /> :
+                        <ChevronDownIcon className="h-5 w-5 text-slate-500" />
+                      }
+                      {getServerTypeIcon(serverType)}
+                      <h3 className="ml-2 text-lg font-medium text-slate-900 dark:text-white">
+                        {serverName}
+                      </h3>
+                      <span className="ml-2 text-sm text-slate-500 dark:text-slate-400">
+                        ({serverUsers.length} users)
+                      </span>
+                    </div>
+
+                    {!isCollapsed && (
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 pl-7">
+                        {serverUsers.map((user) => (
                   <div key={`${user.server_id}-${user.user_id}`} className="card">
                     <div className="card-body">
                       <div className="flex items-start justify-between">
@@ -236,12 +292,126 @@ export default function UsersList() {
                           )}
                         </div>
                       )}
+
+                      {/* Action buttons */}
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openPasswordModal(user)
+                          }}
+                          className="flex-1 px-2 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 dark:text-indigo-400 dark:bg-indigo-900 dark:hover:bg-indigo-800 rounded-md transition-colors"
+                        >
+                          <KeyIcon className="h-3 w-3 inline mr-1" />
+                          Password
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openLibraryModal(user)
+                          }}
+                          className="flex-1 px-2 py-1 text-xs font-medium text-green-600 bg-green-50 hover:bg-green-100 dark:text-green-400 dark:bg-green-900 dark:hover:bg-green-800 rounded-md transition-colors"
+                        >
+                          <FolderIcon className="h-3 w-3 inline mr-1" />
+                          Libraries
+                        </button>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Password Change Modal */}
+      {isPasswordModalOpen && selectedUser && (
+        <div className="fixed inset-0 bg-slate-500 bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-4">
+              Change Password: {selectedUser.username}
+            </h2>
+            <div className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+              Server: {selectedUser.server_name} ({selectedUser.server_type})
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  className="mt-1 block w-full border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-slate-700 dark:text-white"
+                  placeholder="Enter new password"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Confirm Password
+                </label>
+                <input
+                  type="password"
+                  className="mt-1 block w-full border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-slate-700 dark:text-white"
+                  placeholder="Confirm new password"
+                />
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setIsPasswordModalOpen(false)
+                  setSelectedUser(null)
+                }}
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+              >
+                Change Password
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Library Access Modal */}
+      {isLibraryModalOpen && selectedUser && (
+        <div className="fixed inset-0 bg-slate-500 bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-4">
+              Manage Library Access: {selectedUser.username}
+            </h2>
+            <div className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+              Server: {selectedUser.server_name} ({selectedUser.server_type})
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-center text-slate-500 dark:text-slate-400 py-8">
+                <FolderIcon className="h-12 w-12 mx-auto mb-2 text-slate-400" />
+                <p>Library access management will be available soon</p>
+                <p className="text-sm mt-2">This feature will allow you to control which libraries this user can access</p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => {
+                  setIsLibraryModalOpen(false)
+                  setSelectedUser(null)
+                }}
+                className="btn btn-primary"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

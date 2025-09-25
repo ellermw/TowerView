@@ -7,17 +7,18 @@ import {
   PauseIcon,
   StopIcon,
   UsersIcon,
-  ClockIcon,
   DevicePhoneMobileIcon,
   SignalIcon,
-  TrophyIcon,
   FilmIcon,
   TvIcon,
   FolderIcon,
   ChartBarIcon,
   XMarkIcon,
   ChevronDownIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  CpuChipIcon,
+  ComputerDesktopIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline'
 import { Disclosure, Transition } from '@headlessui/react'
 import api from '../../services/api'
@@ -79,6 +80,16 @@ interface LiveSession {
   is_4k?: boolean
   is_hdr?: boolean
   is_dolby_vision?: boolean
+
+  // Transcode details
+  transcode_hw_requested?: boolean
+  transcode_hw_decode?: boolean
+  transcode_hw_encode?: boolean
+  transcode_hw_decode_title?: string
+  transcode_hw_encode_title?: string
+  transcode_hw_full_pipeline?: boolean
+  transcode_throttled?: boolean
+  transcode_speed?: number
 }
 
 interface AnalyticsFilters {
@@ -149,6 +160,36 @@ interface BandwidthDataPoint {
   serverBandwidths: Record<string, number>
 }
 
+interface GPUStatus {
+  total_hw_transcodes: number
+  total_sw_transcodes: number
+  total_transcodes: number
+  hw_percentage: number
+  servers: Array<{
+    server_id: number
+    server_name: string
+    server_type: string
+    hw_transcodes: number
+    sw_transcodes: number
+    hw_sessions: Array<{
+      session_id: string
+      username: string
+      title: string
+      decode: string
+      encode: string
+      speed?: number
+      throttled: boolean
+    }>
+    sw_sessions: Array<{
+      session_id: string
+      username: string
+      title: string
+      speed?: number
+      throttled: boolean
+    }>
+  }>
+}
+
 export default function AdminHome() {
   // Bandwidth tracking state for the graph
   const [bandwidthHistory, setBandwidthHistory] = React.useState<BandwidthDataPoint[]>([])
@@ -160,12 +201,16 @@ export default function AdminHome() {
   })
 
   // Get active sessions with 1-second refresh for live bandwidth updates
-  const { data: sessions = [], isLoading: sessionsLoading, refetch: refetchSessions } = useQuery<LiveSession[]>(
+  const { data: sessions = [], isLoading: sessionsLoading, refetch: refetchSessions, error: sessionsError } = useQuery<LiveSession[]>(
     'admin-sessions',
     () => api.get('/admin/sessions').then(res => res.data),
     {
-      refetchInterval: 1000, // 1-second refresh for live updates
+      refetchInterval: 30000, // 30-second refresh to avoid rate limiting
       refetchOnWindowFocus: false,
+      onError: (error) => {
+        console.error('Failed to fetch sessions:', error)
+      },
+      retry: 1
     }
   )
 
@@ -179,12 +224,28 @@ export default function AdminHome() {
   )
 
   // Get analytics data with filters
-  const { data: analytics, isLoading: analyticsLoading } = useQuery<DashboardAnalytics>(
+  const { data: analytics, isLoading: analyticsLoading, error: analyticsError } = useQuery<DashboardAnalytics>(
     ['dashboard-analytics', analyticsFilters],
     () => api.post('/admin/analytics', analyticsFilters).then(res => res.data),
     {
       refetchInterval: 30000, // Refresh every 30 seconds
       refetchOnWindowFocus: false,
+      onError: (error) => {
+        console.error('Failed to fetch analytics:', error)
+      },
+      retry: 1
+    }
+  )
+
+  // Get GPU status (optional - don't fail if endpoint doesn't exist)
+  const { data: gpuStatus } = useQuery<GPUStatus>(
+    'gpu-status',
+    () => api.get('/admin/gpu-status').then(res => res.data).catch(() => null),
+    {
+      refetchInterval: 30000, // Refresh every 30 seconds
+      refetchOnWindowFocus: false,
+      retry: false, // Don't retry if it fails
+      enabled: false, // Disable for now until backend is updated
     }
   )
 
@@ -209,9 +270,9 @@ export default function AdminHome() {
   )
 
   // Store sessions in a ref to avoid re-running effect on every update
-  const sessionsRef = React.useRef(sessions)
+  const sessionsRef = React.useRef(sessions || [])
   React.useEffect(() => {
-    sessionsRef.current = sessions
+    sessionsRef.current = sessions || []
   }, [sessions])
 
   // Track bandwidth data every 15 seconds
@@ -225,7 +286,7 @@ export default function AdminHome() {
       const serverBandwidths: Record<string, number> = {}
 
       const currentSessions = sessionsRef.current
-      if (currentSessions && currentSessions.length > 0) {
+      if (currentSessions && Array.isArray(currentSessions) && currentSessions.length > 0) {
         currentSessions.forEach(session => {
           const bandwidth = session.session_bandwidth ?
             (typeof session.session_bandwidth === 'string' ?
@@ -379,9 +440,12 @@ export default function AdminHome() {
   const groupedSessions = useMemo(() => {
     const serverTypeOrder = ['plex', 'emby', 'jellyfin']
 
-    const grouped = sessions.reduce((acc, session) => {
+    // Ensure sessions is an array
+    const validSessions = Array.isArray(sessions) ? sessions : []
+
+    const grouped = validSessions.reduce((acc, session) => {
       // Get server type from API field
-      let serverType = session.server_type || session.serverType || session.type || ''
+      let serverType = session.server_type || ''
 
       if (serverType) {
         // Normalize the server type
@@ -441,6 +505,15 @@ export default function AdminHome() {
 
   // Calculate aggregated statistics
   const calculateStats = (sessions: LiveSession[]) => {
+    if (!Array.isArray(sessions)) {
+      return {
+        totalStreams: 0,
+        transcodes: 0,
+        directPlay: 0,
+        directStream: 0,
+        totalBandwidth: 0
+      }
+    }
     const totalStreams = sessions.length
     const transcodes = sessions.filter(s => s.video_decision === 'transcode').length
     const directPlay = sessions.filter(s => s.video_decision === 'directplay').length
@@ -459,13 +532,13 @@ export default function AdminHome() {
     }
   }
 
-  const formatBytes = (bytes: number) => {
-    if (!bytes) return '0 B'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
-  }
+  // const formatBytes = (bytes: number) => {
+  //   if (!bytes) return '0 B'
+  //   const k = 1024
+  //   const sizes = ['B', 'KB', 'MB', 'GB']
+  //   const i = Math.floor(Math.log(bytes) / Math.log(k))
+  //   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+  // }
 
   const formatBitrate = (bitrate: string | number) => {
     if (!bitrate) return '0 Kbps'
@@ -519,7 +592,7 @@ export default function AdminHome() {
       1 // Ensure we have at least 1 to avoid division by zero
     )
 
-    const formatTime = (timestamp: number) => {
+    const formatTimestamp = (timestamp: number) => {
       const date = new Date(timestamp)
       return date.toLocaleTimeString('en-US', {
         hour12: false,
@@ -643,7 +716,7 @@ export default function AdminHome() {
                     className="absolute transform -translate-x-1/2"
                     style={{ left: `${position}%` }}
                   >
-                    {formatTime(point.timestamp)}
+                    {formatTimestamp(point.timestamp)}
                   </span>
                 )
               }
@@ -710,13 +783,115 @@ export default function AdminHome() {
           <BandwidthGraph />
         </div>
 
-        {sessionsLoading ? (
+        {/* GPU Status */}
+        {gpuStatus && gpuStatus.total_transcodes > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-2">
+              <CpuChipIcon className="w-4 h-4 text-purple-500" />
+              <h3 className="text-sm font-medium text-slate-900 dark:text-white">
+                GPU Utilization
+              </h3>
+            </div>
+            <div className="card">
+              <div className="card-body">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                      {gpuStatus.total_hw_transcodes}
+                    </div>
+                    <div className="text-xs text-slate-600 dark:text-slate-400">Hardware Transcodes</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                      {gpuStatus.total_sw_transcodes}
+                    </div>
+                    <div className="text-xs text-slate-600 dark:text-slate-400">Software Transcodes</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                      {gpuStatus.hw_percentage}%
+                    </div>
+                    <div className="text-xs text-slate-600 dark:text-slate-400">GPU Utilization</div>
+                  </div>
+                </div>
+
+                {/* Progress bar showing GPU utilization */}
+                <div className="mb-4">
+                  <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
+                    <span>GPU Usage</span>
+                    <span>{gpuStatus.hw_percentage}% Hardware Accelerated</span>
+                  </div>
+                  <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3">
+                    <div
+                      className="h-3 rounded-full bg-gradient-to-r from-purple-500 to-purple-600"
+                      style={{ width: `${Math.min(100, Math.max(0, gpuStatus.hw_percentage))}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Server breakdown */}
+                {gpuStatus.servers.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">By Server:</div>
+                    {gpuStatus.servers.map(server => (
+                      <div key={server.server_id} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <ServerIcon className="w-3 h-3 text-slate-400" />
+                          <span className="text-slate-900 dark:text-white">{server.server_name}</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          {server.hw_transcodes > 0 && (
+                            <span className="text-purple-600 dark:text-purple-400">
+                              <CpuChipIcon className="w-3 h-3 inline mr-1" />
+                              {server.hw_transcodes} HW
+                            </span>
+                          )}
+                          {server.sw_transcodes > 0 && (
+                            <span className="text-orange-600 dark:text-orange-400">
+                              <ComputerDesktopIcon className="w-3 h-3 inline mr-1" />
+                              {server.sw_transcodes} SW
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Warning if too many software transcodes */}
+                {gpuStatus.hw_percentage < 50 && gpuStatus.total_transcodes >= 2 && (
+                  <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <ExclamationTriangleIcon className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                          Low GPU Utilization
+                        </p>
+                        <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+                          Most transcodes are using CPU instead of GPU. Consider checking your hardware acceleration settings.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {sessionsError ? (
+          <div className="card">
+            <div className="card-body">
+              <p className="text-red-600 dark:text-red-400">Failed to load sessions. Please check your connection.</p>
+            </div>
+          </div>
+        ) : sessionsLoading ? (
           <div className="card">
             <div className="card-body">
               <p className="text-slate-600 dark:text-slate-400">Loading active sessions...</p>
             </div>
           </div>
-        ) : sessions.length === 0 ? (
+        ) : !sessions || sessions.length === 0 ? (
           <div className="card">
             <div className="card-body text-center">
               <DevicePhoneMobileIcon className="w-12 h-12 mx-auto text-slate-400 mb-3" />
@@ -726,7 +901,7 @@ export default function AdminHome() {
         ) : (
           <div className="space-y-4">
             {groupedSessions.map(({ serverType, servers }) => {
-              const allServerTypeSessions = servers.flatMap(server => server.sessions)
+              const allServerTypeSessions = servers ? servers.flatMap(server => server.sessions || []) : []
               const serverTypeStats = calculateStats(allServerTypeSessions)
 
               return (
@@ -861,7 +1036,24 @@ export default function AdminHome() {
                                                       {getStateIcon(session.state)}
                                                       <span className="capitalize font-medium text-slate-900 dark:text-white">{session.state}</span>
                                                       {session.video_decision === 'transcode' ? (
-                                                        <span className="text-orange-500 ml-1">• Transcoding</span>
+                                                        <>
+                                                          {(session.transcode_hw_full_pipeline || (session.transcode_hw_decode && session.transcode_hw_encode)) ? (
+                                                            <span className="flex items-center text-purple-600 dark:text-purple-400 ml-1">
+                                                              <CpuChipIcon className="w-3 h-3 mr-0.5" />
+                                                              <span className="text-xs">HW Transcode</span>
+                                                            </span>
+                                                          ) : session.transcode_hw_decode || session.transcode_hw_encode ? (
+                                                            <span className="flex items-center text-blue-600 dark:text-blue-400 ml-1">
+                                                              <CpuChipIcon className="w-3 h-3 mr-0.5" />
+                                                              <span className="text-xs">Partial HW</span>
+                                                            </span>
+                                                          ) : (
+                                                            <span className="flex items-center text-orange-600 dark:text-orange-400 ml-1">
+                                                              <ComputerDesktopIcon className="w-3 h-3 mr-0.5" />
+                                                              <span className="text-xs">SW Transcode</span>
+                                                            </span>
+                                                          )}
+                                                        </>
                                                       ) : (
                                                         <span className="text-green-500 ml-1">• Direct Play</span>
                                                       )}
@@ -938,6 +1130,52 @@ export default function AdminHome() {
                                                       </span>
                                                     </div>
                                                   ) : null}
+
+                                                  {/* Transcode Details */}
+                                                  {session.video_decision === 'transcode' && (
+                                                    <div className="border-t border-slate-200 dark:border-slate-700 pt-2 mt-2">
+                                                      <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Transcode Details:</div>
+                                                      <div className="space-y-1">
+                                                        {session.transcode_hw_decode !== undefined && (
+                                                          <div className="flex justify-between">
+                                                            <span>Decode:</span>
+                                                            <span className={`font-medium ${session.transcode_hw_decode ? 'text-purple-600 dark:text-purple-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                                                              {session.transcode_hw_decode ?
+                                                                (session.transcode_hw_decode_title || 'Hardware') :
+                                                                'Software'}
+                                                            </span>
+                                                          </div>
+                                                        )}
+                                                        {session.transcode_hw_encode !== undefined && (
+                                                          <div className="flex justify-between">
+                                                            <span>Encode:</span>
+                                                            <span className={`font-medium ${session.transcode_hw_encode ? 'text-purple-600 dark:text-purple-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                                                              {session.transcode_hw_encode ?
+                                                                (session.transcode_hw_encode_title || 'Hardware') :
+                                                                'Software'}
+                                                            </span>
+                                                          </div>
+                                                        )}
+                                                        {session.transcode_speed !== undefined && (
+                                                          <div className="flex justify-between">
+                                                            <span>Speed:</span>
+                                                            <span className={`font-medium ${session.transcode_speed >= 1.0 ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
+                                                              {session.transcode_speed?.toFixed(1) || '0.0'}x
+                                                            </span>
+                                                          </div>
+                                                        )}
+                                                        {session.transcode_throttled && (
+                                                          <div className="flex justify-between">
+                                                            <span>Status:</span>
+                                                            <span className="font-medium text-yellow-600 dark:text-yellow-400">
+                                                              Throttled
+                                                            </span>
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
                                                   <div className="flex justify-between">
                                                     <span>Bandwidth:</span>
                                                     <span className="font-medium text-blue-600 dark:text-blue-400">
@@ -950,13 +1188,13 @@ export default function AdminHome() {
                                                 <div className="mt-3">
                                                   <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
                                                     <span>{formatTime(session.progress_ms)}</span>
-                                                    <span>{session.progress_percent.toFixed(1)}%</span>
+                                                    <span>{session.progress_percent?.toFixed(1) || '0.0'}%</span>
                                                     <span>{formatTime(session.duration_ms)}</span>
                                                   </div>
                                                   <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
                                                     <div
                                                       className={`h-2 rounded-full transition-all duration-300 ${getProgressBarColor(session.state)}`}
-                                                      style={{ width: `${Math.min(100, Math.max(0, session.progress_percent))}%` }}
+                                                      style={{ width: `${Math.min(100, Math.max(0, session.progress_percent || 0))}%` }}
                                                     />
                                                   </div>
                                                 </div>
@@ -1065,13 +1303,13 @@ export default function AdminHome() {
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                      {analytics?.completion_rate.toFixed(1) || 0}%
+                      {analytics?.completion_rate?.toFixed(1) || 0}%
                     </div>
                     <div className="text-xs text-slate-600 dark:text-slate-400">Completion Rate</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                      {analytics?.transcode_rate.toFixed(1) || 0}%
+                      {analytics?.transcode_rate?.toFixed(1) || 0}%
                     </div>
                     <div className="text-xs text-slate-600 dark:text-slate-400">Transcode Rate</div>
                   </div>
@@ -1182,7 +1420,7 @@ export default function AdminHome() {
                     {analytics.top_devices.slice(0, 5).map((device, index) => (
                       <div key={index} className="text-sm">
                         <div className="text-slate-900 dark:text-white truncate">{device.device_name}</div>
-                        <div className="text-xs text-slate-500">{device.total_sessions} sessions • {device.transcode_percentage.toFixed(1)}% transcode</div>
+                        <div className="text-xs text-slate-500">{device.total_sessions} sessions • {device.transcode_percentage?.toFixed(1) || '0.0'}% transcode</div>
                       </div>
                     ))}
                   </div>

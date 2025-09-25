@@ -1,26 +1,29 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
-import { PlusIcon, ServerIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, ServerIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import api from '../../services/api'
+import ServerStatsRealTime from './ServerStatsRealTime'
 
 export default function ServerManagement() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingServer, setEditingServer] = useState<any>(null)
   const [selectedServerType, setSelectedServerType] = useState('')
   const [editSelectedServerType, setEditSelectedServerType] = useState('')
+  const [expandedServers, setExpandedServers] = useState<Set<number>>(new Set())
   const queryClient = useQueryClient()
 
   const { data: servers = [], isLoading } = useQuery('servers', () =>
     api.get('/admin/servers').then(res => res.data)
   )
 
+
   // Query for active sessions (same as Sessions/Dashboard pages)
   const { data: allSessions = [], isLoading: sessionsLoading } = useQuery(
     'admin-sessions-servers-page',
     () => api.get('/admin/sessions').then(res => res.data),
     {
-      refetchInterval: 5000, // Refetch every 5 seconds
+      refetchInterval: 2000, // Refetch every 2 seconds
       enabled: servers.length > 0,
       staleTime: 0, // Always consider data stale
       cacheTime: 0  // Don't cache
@@ -143,10 +146,31 @@ export default function ServerManagement() {
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-200 dark:divide-slate-700">
-                  {servers.map((server: any) => (
-                    <tr key={server.id}>
+                  {servers.map((server: any) => {
+                    const isExpanded = expandedServers.has(server.id)
+                    return (
+                    <>
+                    <tr key={server.id} className="hover:bg-slate-50 dark:hover:bg-slate-800">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
+                          <button
+                            onClick={() => {
+                              const newExpanded = new Set(expandedServers)
+                              if (isExpanded) {
+                                newExpanded.delete(server.id)
+                              } else {
+                                newExpanded.add(server.id)
+                              }
+                              setExpandedServers(newExpanded)
+                            }}
+                            className="mr-2 p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded"
+                          >
+                            {isExpanded ? (
+                              <ChevronDownIcon className="h-4 w-4 text-slate-500" />
+                            ) : (
+                              <ChevronRightIcon className="h-4 w-4 text-slate-500" />
+                            )}
+                          </button>
                           <ServerIcon className="h-5 w-5 text-gray-400 mr-3" />
                           <div>
                             <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -200,7 +224,18 @@ export default function ServerManagement() {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    {isExpanded && (
+                      <tr key={`${server.id}-stats`}>
+                        <td colSpan={5} className="px-6 py-0 bg-slate-50 dark:bg-slate-900">
+                          <div className="border-l-4 border-primary-500 ml-8">
+                            <ServerStatsRealTime serverId={server.id} serverName={server.name} />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

@@ -6,6 +6,8 @@ from .session import Session
 from .media import Media
 from .audit_log import AuditLog
 from .playback_analytics import PlaybackEvent, DailyAnalytics
+from .user_permission import UserPermission
+from .settings import SystemSettings, NetdataIntegration
 
 __all__ = [
     "Base",
@@ -16,5 +18,8 @@ __all__ = [
     "Media",
     "AuditLog",
     "PlaybackEvent",
-    "DailyAnalytics"
+    "DailyAnalytics",
+    "UserPermission",
+    "SystemSettings",
+    "NetdataIntegration"
 ]

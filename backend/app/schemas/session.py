@@ -79,3 +79,13 @@ class LiveSessionResponse(BaseModel):
     is_4k: bool = False
     is_hdr: bool = False
     is_dolby_vision: bool = False
+
+    # Transcode details
+    transcode_hw_requested: Optional[bool] = None
+    transcode_hw_decode: Optional[bool] = None
+    transcode_hw_encode: Optional[bool] = None
+    transcode_hw_decode_title: Optional[str] = None
+    transcode_hw_encode_title: Optional[str] = None
+    transcode_hw_full_pipeline: Optional[bool] = None
+    transcode_throttled: Optional[bool] = None
+    transcode_speed: Optional[float] = None

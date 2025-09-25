@@ -3,13 +3,12 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from .base import BaseProvider
+from ..core.token_cache import token_cache
 
 logger = logging.getLogger(__name__)
 
 
 class PlexProvider(BaseProvider):
-    # Class-level token cache shared across all instances
-    _token_cache = {}  # Format: {server_id: {"token": str, "expiry": datetime, "last_attempt": datetime, "cooldown_until": datetime}}
 
     def __init__(self, server, credentials):
         super().__init__(server, credentials)
@@ -24,27 +23,18 @@ class PlexProvider(BaseProvider):
     async def connect(self) -> bool:
         """Test connection to Plex server with Plex.tv authentication"""
         try:
-            # If we already have a token/API key, skip Plex.tv authentication
-            if self.token:
-                logger.debug(f"Using existing token/API key for server {self.server_id}")
-            # If we have username/password but no token, authenticate with Plex.tv
-            elif self.username and self.password:
-                logger.debug(f"Authenticating with Plex.tv using username: {self.username}")
-                plex_tv_token = await self._authenticate_with_plex_tv()
-                if not plex_tv_token:
-                    logger.debug("Plex.tv authentication failed")
-                    return False
-                self.token = plex_tv_token
-                logger.debug("Plex.tv authentication successful")
-            else:
-                logger.debug("No authentication credentials available")
+            # Ensure we have a valid token (checks cache first, avoids rate limiting)
+            await self._ensure_valid_token()
+
+            if not self.token:
+                logger.debug("No valid token available after authentication attempt")
                 return False
 
             # Test connection to the server
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.base_url}/",
-                    headers={"X-Plex-Token": self.token} if self.token else {},
+                    headers={"X-Plex-Token": self.token},
                     timeout=10.0
                 )
                 logger.debug(f"Plex server connection test - Status: {response.status_code}")
@@ -54,17 +44,19 @@ class PlexProvider(BaseProvider):
             return False
 
     async def _ensure_valid_token(self) -> None:
-        """Ensure we have a valid token, using shared cache to avoid rate limiting"""
-        cache_key = self.server_id
-        cache_entry = self._token_cache.get(cache_key, {})
+        """Ensure we have a valid token, using Redis cache to avoid rate limiting"""
+        # If we already have an API key/token from credentials, use it
+        if self.token:
+            logger.debug(f"Using existing API key/token for server {self.server_id}")
+            return
 
-        # Check if we have a cached valid token
-        cached_token = cache_entry.get("token")
-        cached_expiry = cache_entry.get("expiry")
-
-        if cached_token and cached_expiry and datetime.utcnow() < cached_expiry:
-            self.token = cached_token
-            logger.debug(f"Using cached Plex.tv token for server {self.server_id} (expires in {(cached_expiry - datetime.utcnow()).total_seconds():.0f}s)")
+        # Check Redis cache for valid token
+        cached_data = token_cache.get_token(self.server_id)
+        if cached_data and cached_data.get("token"):
+            self.token = cached_data["token"]
+            expiry = datetime.fromisoformat(cached_data.get("expiry", "1970-01-01"))
+            remaining = (expiry - datetime.utcnow()).total_seconds()
+            logger.debug(f"Using cached Plex.tv token for server {self.server_id} (expires in {remaining:.0f}s)")
             return
 
         # If we don't have username/password, we can't authenticate
@@ -73,29 +65,14 @@ class PlexProvider(BaseProvider):
             return
 
         # Check for active rate limit cooldown
-        cooldown_until = cache_entry.get("cooldown_until")
+        cooldown_until = token_cache.get_rate_limit_info(self.server_id)
         if cooldown_until and datetime.utcnow() < cooldown_until:
             remaining = (cooldown_until - datetime.utcnow()).total_seconds()
             logger.debug(f"Skipping Plex.tv auth - rate limit cooldown ({remaining:.1f}s remaining)")
             return
 
-        # Avoid rate limiting - don't try more than once per 5 minutes
-        last_attempt = cache_entry.get("last_attempt")
-        if last_attempt:
-            time_since_last = datetime.utcnow() - last_attempt
-            seconds_since_last = time_since_last.total_seconds()
-            if seconds_since_last < 300:  # 5 minutes
-                logger.debug(f"Skipping Plex.tv auth - rate limiting (last attempt {seconds_since_last:.1f}s ago)")
-                return
-
         logger.debug("Getting fresh Plex.tv token...")
         current_time = datetime.utcnow()
-
-        # Update cache with attempt time immediately to prevent concurrent requests
-        self._token_cache[cache_key] = {
-            **cache_entry,
-            "last_attempt": current_time
-        }
 
         new_token = await self._authenticate_with_plex_tv()
         if new_token:
@@ -103,12 +80,8 @@ class PlexProvider(BaseProvider):
             # Set token to expire in 23 hours (Plex tokens are valid for 24 hours)
             token_expiry = current_time + timedelta(hours=23)
 
-            # Update cache with new token and expiry
-            self._token_cache[cache_key] = {
-                "token": new_token,
-                "expiry": token_expiry,
-                "last_attempt": current_time
-            }
+            # Store in Redis cache
+            token_cache.set_token(self.server_id, new_token, token_expiry)
             logger.debug(f"Successfully refreshed Plex.tv token for server {self.server_id}")
         else:
             logger.debug(f"Failed to refresh Plex.tv token for server {self.server_id}")
@@ -143,14 +116,8 @@ class PlexProvider(BaseProvider):
                 logger.debug(f"Plex.tv auth response - Status: {response.status_code}")
                 if response.status_code == 429:
                     logger.debug("Plex.tv rate limiting detected - will wait 10 minutes before next attempt")
-                    # Set a longer cooldown for rate limiting in the cache
-                    cache_key = self.server_id
-                    cache_entry = self._token_cache.get(cache_key, {})
-                    self._token_cache[cache_key] = {
-                        **cache_entry,
-                        "last_attempt": datetime.utcnow(),
-                        "cooldown_until": datetime.utcnow() + timedelta(minutes=10)  # 10 min cooldown
-                    }
+                    # Set rate limit cooldown in Redis cache
+                    token_cache.set_rate_limit(self.server_id, cooldown_minutes=10)
                     return None
                 elif response.status_code != 201:
                     logger.debug(f"Plex.tv authentication failed: {response.text}")
@@ -376,6 +343,23 @@ class PlexProvider(BaseProvider):
                         session_data["session_bandwidth"] = session_elem.get("bandwidth")
                         session_data["session_location"] = session_elem.get("location")
 
+                    # Extract TranscodeSession info for hardware transcoding details
+                    transcode_elem = video.find('TranscodeSession')
+                    if transcode_elem is not None:
+                        session_data["transcode_hw_requested"] = transcode_elem.get("transcodeHwRequested") == "1"
+                        session_data["transcode_hw_decode"] = transcode_elem.get("transcodeHwDecoding") == "1"
+                        session_data["transcode_hw_encode"] = transcode_elem.get("transcodeHwEncoding") == "1"
+                        session_data["transcode_hw_decode_title"] = transcode_elem.get("transcodeHwDecodingTitle")
+                        session_data["transcode_hw_encode_title"] = transcode_elem.get("transcodeHwEncodingTitle")
+                        session_data["transcode_hw_full_pipeline"] = transcode_elem.get("transcodeHwFullPipeline") == "1"
+                        session_data["transcode_throttled"] = transcode_elem.get("throttled") == "1"
+                        speed = transcode_elem.get("speed")
+                        if speed:
+                            try:
+                                session_data["transcode_speed"] = float(speed)
+                            except:
+                                session_data["transcode_speed"] = None
+
                     # Extract Media info for transcoding details
                     media_elem = video.find('Media')
                     if media_elem is not None:
@@ -438,6 +422,13 @@ class PlexProvider(BaseProvider):
     async def list_users(self) -> List[Dict[str, Any]]:
         """Get all Plex users with access to this server"""
         try:
+            # Ensure we have a valid token
+            await self._ensure_valid_token()
+
+            if not self.token:
+                logger.debug("No valid token available for listing Plex users")
+                return []
+
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.base_url}/accounts",

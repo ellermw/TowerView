@@ -5,15 +5,21 @@ from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...core.security import get_current_admin_user
 from ...models.user import User
+from ...models.server import Server
 from ...schemas.server import ServerCreate, ServerResponse, ServerUpdate
 from ...schemas.session import SessionResponse, LiveSessionResponse
-from ...schemas.user import UserResponse, ServerUserResponse
+from ...schemas.user import (
+    UserResponse, ServerUserResponse, LocalUserCreate,
+    LocalUserUpdate, LocalUserResponse, UserPermissionSchema,
+    UserPermissionUpdate
+)
 from ...schemas.analytics import AnalyticsFilters, DashboardAnalyticsResponse
 from ...services.server_service import ServerService
 from ...services.analytics_service import AnalyticsService
 from ...providers.factory import ProviderFactory
 from ...models.playback_analytics import PlaybackEvent
 from datetime import datetime
+from typing import Dict, Any
 
 router = APIRouter()
 
@@ -304,6 +310,87 @@ async def get_server_sessions(
         )
 
 
+@router.get("/gpu-status")
+async def get_gpu_status(
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Get GPU utilization status across all servers"""
+    server_service = ServerService(db)
+    servers = server_service.get_servers_by_owner(current_user.id)
+
+    gpu_status = {
+        "total_hw_transcodes": 0,
+        "total_sw_transcodes": 0,
+        "total_transcodes": 0,
+        "servers": []
+    }
+
+    for server in servers:
+        try:
+            provider = ProviderFactory.create_provider(server, db)
+            sessions = await provider.list_active_sessions()
+
+            server_hw_transcodes = 0
+            server_sw_transcodes = 0
+            hw_sessions = []
+            sw_sessions = []
+
+            for session in sessions:
+                if session.get("video_decision") == "transcode":
+                    is_hw = (
+                        session.get("transcode_hw_full_pipeline") or
+                        (session.get("transcode_hw_decode") and session.get("transcode_hw_encode"))
+                    )
+
+                    if is_hw:
+                        server_hw_transcodes += 1
+                        hw_sessions.append({
+                            "session_id": session.get("session_id"),
+                            "username": session.get("username"),
+                            "title": session.get("title") or session.get("full_title"),
+                            "decode": session.get("transcode_hw_decode_title") or ("Hardware" if session.get("transcode_hw_decode") else "Software"),
+                            "encode": session.get("transcode_hw_encode_title") or ("Hardware" if session.get("transcode_hw_encode") else "Software"),
+                            "speed": session.get("transcode_speed"),
+                            "throttled": session.get("transcode_throttled", False)
+                        })
+                    else:
+                        server_sw_transcodes += 1
+                        sw_sessions.append({
+                            "session_id": session.get("session_id"),
+                            "username": session.get("username"),
+                            "title": session.get("title") or session.get("full_title"),
+                            "speed": session.get("transcode_speed"),
+                            "throttled": session.get("transcode_throttled", False)
+                        })
+
+            if server_hw_transcodes > 0 or server_sw_transcodes > 0:
+                gpu_status["servers"].append({
+                    "server_id": server.id,
+                    "server_name": server.name,
+                    "server_type": server.type.value,
+                    "hw_transcodes": server_hw_transcodes,
+                    "sw_transcodes": server_sw_transcodes,
+                    "hw_sessions": hw_sessions,
+                    "sw_sessions": sw_sessions
+                })
+
+                gpu_status["total_hw_transcodes"] += server_hw_transcodes
+                gpu_status["total_sw_transcodes"] += server_sw_transcodes
+
+        except Exception as e:
+            print(f"Failed to get GPU status from server {server.name}: {e}")
+            continue
+
+    gpu_status["total_transcodes"] = gpu_status["total_hw_transcodes"] + gpu_status["total_sw_transcodes"]
+    gpu_status["hw_percentage"] = (
+        round((gpu_status["total_hw_transcodes"] / gpu_status["total_transcodes"]) * 100, 1)
+        if gpu_status["total_transcodes"] > 0 else 0
+    )
+
+    return gpu_status
+
+
 @router.post("/servers/{server_id}/sessions/{session_id}/terminate")
 async def terminate_session(
     server_id: int,
@@ -500,3 +587,281 @@ async def get_analytics(
             "completion_rate": 0.0,
             "transcode_rate": 0.0
         }
+
+
+# Local User Management Endpoints
+
+@router.get("/local-users", response_model=List[LocalUserResponse])
+async def get_local_users(
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Get all local users"""
+    from ...models.user import UserType
+    users = db.query(User).filter(User.type == UserType.local_user).all()
+    return users
+
+
+@router.post("/local-users", response_model=LocalUserResponse)
+async def create_local_user(
+    user_data: LocalUserCreate,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new local user"""
+    from ...models.user import UserType
+    from ...core.security import get_password_hash
+
+    # Check if username already exists
+    existing_user = db.query(User).filter(User.username == user_data.username).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already exists"
+        )
+
+    # Create new local user
+    new_user = User(
+        type=UserType.local_user,
+        username=user_data.username,
+        email=user_data.email,
+        password_hash=get_password_hash(user_data.password),
+        must_change_password=user_data.must_change_password
+    )
+
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return new_user
+
+
+@router.get("/local-users/{user_id}", response_model=LocalUserResponse)
+async def get_local_user(
+    user_id: int,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Get a specific local user"""
+    from ...models.user import UserType
+
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.type == UserType.local_user
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    return user
+
+
+@router.patch("/local-users/{user_id}", response_model=LocalUserResponse)
+async def update_local_user(
+    user_id: int,
+    user_data: LocalUserUpdate,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Update a local user"""
+    from ...models.user import UserType
+    from ...core.security import get_password_hash
+
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.type == UserType.local_user
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Update fields if provided
+    if user_data.email is not None:
+        user.email = user_data.email
+    if user_data.password is not None:
+        user.password_hash = get_password_hash(user_data.password)
+    if user_data.must_change_password is not None:
+        user.must_change_password = user_data.must_change_password
+
+    db.commit()
+    db.refresh(user)
+
+    return user
+
+
+@router.delete("/local-users/{user_id}")
+async def delete_local_user(
+    user_id: int,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a local user"""
+    from ...models.user import UserType
+
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.type == UserType.local_user
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    db.delete(user)
+    db.commit()
+
+    return {"message": "User deleted successfully"}
+
+
+# User Permission Endpoints
+
+@router.get("/local-users/{user_id}/permissions", response_model=List[UserPermissionSchema])
+async def get_user_permissions(
+    user_id: int,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Get permissions for a local user"""
+    from ...models.user_permission import UserPermission
+
+    permissions = db.query(UserPermission).filter(
+        UserPermission.user_id == user_id
+    ).all()
+
+    return permissions
+
+
+@router.post("/local-users/{user_id}/permissions", response_model=UserPermissionSchema)
+async def grant_user_permission(
+    user_id: int,
+    permission_data: UserPermissionSchema,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Grant permissions to a local user for a server"""
+    from ...models.user_permission import UserPermission
+    from ...models.user import UserType
+
+    # Check if user exists and is a local user
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.type == UserType.local_user
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found or not a local user"
+        )
+
+    # Check if server exists
+    server = db.query(Server).filter(Server.id == permission_data.server_id).first()
+    if not server:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Server not found"
+        )
+
+    # Check if permission already exists
+    existing = db.query(UserPermission).filter(
+        UserPermission.user_id == user_id,
+        UserPermission.server_id == permission_data.server_id
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Permission already exists for this user and server"
+        )
+
+    # Create new permission
+    permission = UserPermission(
+        user_id=user_id,
+        server_id=permission_data.server_id,
+        can_view_sessions=permission_data.can_view_sessions,
+        can_view_users=permission_data.can_view_users,
+        can_view_analytics=permission_data.can_view_analytics,
+        can_terminate_sessions=permission_data.can_terminate_sessions,
+        can_manage_server=permission_data.can_manage_server
+    )
+
+    db.add(permission)
+    db.commit()
+    db.refresh(permission)
+
+    return permission
+
+
+@router.patch("/local-users/{user_id}/permissions/{server_id}", response_model=UserPermissionSchema)
+async def update_user_permission(
+    user_id: int,
+    server_id: int,
+    permission_data: UserPermissionUpdate,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Update user permissions for a server"""
+    from ...models.user_permission import UserPermission
+
+    permission = db.query(UserPermission).filter(
+        UserPermission.user_id == user_id,
+        UserPermission.server_id == server_id
+    ).first()
+
+    if not permission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Permission not found"
+        )
+
+    # Update fields if provided
+    if permission_data.can_view_sessions is not None:
+        permission.can_view_sessions = permission_data.can_view_sessions
+    if permission_data.can_view_users is not None:
+        permission.can_view_users = permission_data.can_view_users
+    if permission_data.can_view_analytics is not None:
+        permission.can_view_analytics = permission_data.can_view_analytics
+    if permission_data.can_terminate_sessions is not None:
+        permission.can_terminate_sessions = permission_data.can_terminate_sessions
+    if permission_data.can_manage_server is not None:
+        permission.can_manage_server = permission_data.can_manage_server
+
+    db.commit()
+    db.refresh(permission)
+
+    return permission
+
+
+@router.delete("/local-users/{user_id}/permissions/{server_id}")
+async def revoke_user_permission(
+    user_id: int,
+    server_id: int,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Revoke user permissions for a server"""
+    from ...models.user_permission import UserPermission
+
+    permission = db.query(UserPermission).filter(
+        UserPermission.user_id == user_id,
+        UserPermission.server_id == server_id
+    ).first()
+
+    if not permission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Permission not found"
+        )
+
+    db.delete(permission)
+    db.commit()
+
+    return {"message": "Permission revoked successfully"}

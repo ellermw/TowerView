@@ -30,7 +30,9 @@ export default function Layout({ children }: LayoutProps) {
         { name: 'Servers', href: '/admin/servers' },
         { name: 'Sessions', href: '/admin/sessions' },
         { name: 'Users', href: '/admin/users' },
+        { name: 'Local Users', href: '/admin/local-users' },
         { name: 'Audit Logs', href: '/admin/audit' },
+        { name: 'Settings', href: '/admin/settings' },
       ]
     : [
         { name: 'Dashboard', href: '/dashboard' },

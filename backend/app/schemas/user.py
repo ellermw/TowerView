@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from ..models.user import UserType, ProviderType
@@ -51,3 +51,54 @@ class ServerUserResponse(BaseModel):
     server_name: Optional[str] = None
     server_id: Optional[int] = None
     server_type: Optional[str] = None
+
+
+class LocalUserCreate(BaseModel):
+    """Schema for creating a local user"""
+    username: str = Field(..., min_length=3, max_length=50)
+    email: Optional[str] = None
+    password: str = Field(..., min_length=8)
+    must_change_password: bool = False
+
+
+class LocalUserUpdate(BaseModel):
+    """Schema for updating a local user"""
+    email: Optional[str] = None
+    password: Optional[str] = Field(None, min_length=8)
+    must_change_password: Optional[bool] = None
+
+
+class UserPermissionSchema(BaseModel):
+    """Schema for user permissions"""
+    server_id: int
+    can_view_sessions: bool = True
+    can_view_users: bool = True
+    can_view_analytics: bool = True
+    can_terminate_sessions: bool = False
+    can_manage_server: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class UserPermissionUpdate(BaseModel):
+    """Schema for updating user permissions"""
+    can_view_sessions: Optional[bool] = None
+    can_view_users: Optional[bool] = None
+    can_view_analytics: Optional[bool] = None
+    can_terminate_sessions: Optional[bool] = None
+    can_manage_server: Optional[bool] = None
+
+
+class LocalUserResponse(UserBase):
+    """Response schema for local users"""
+    id: int
+    type: UserType
+    email: Optional[str] = None
+    must_change_password: bool
+    created_at: datetime
+    updated_at: datetime
+    permissions: List[UserPermissionSchema] = []
+
+    class Config:
+        from_attributes = True

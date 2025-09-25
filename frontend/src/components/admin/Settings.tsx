@@ -1,0 +1,612 @@
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from 'react-query'
+import toast from 'react-hot-toast'
+import {
+  CogIcon,
+  CloudIcon,
+  ServerIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  ArrowPathIcon,
+  LinkIcon,
+  TrashIcon,
+  CpuChipIcon,
+  ExclamationTriangleIcon,
+  CubeIcon,
+  WifiIcon
+} from '@heroicons/react/24/outline'
+import api from '../../services/api'
+
+interface NetdataNode {
+  id: string
+  name: string
+  hostname: string
+  os: string
+  status: string
+  last_seen: number
+  capabilities: string[]
+}
+
+interface NetdataIntegration {
+  id: number
+  enabled: boolean
+  has_token: boolean
+  space_id: string | null
+  node_mappings: Record<string, { node_id: string; node_name: string; container_name?: string }>
+  cached_nodes: NetdataNode[]
+  nodes_updated_at: string | null
+}
+
+interface DockerContainer {
+  id: string
+  name: string
+  display_name: string
+}
+
+interface Server {
+  id: number
+  name: string
+  type: string
+  base_url: string
+}
+
+interface PortainerContainer {
+  id: string
+  name: string
+  image: string
+  state: string
+  status: string
+}
+
+interface PortainerIntegration {
+  connected: boolean
+  enabled?: boolean
+  url?: string
+  endpoint_id?: number
+  container_mappings?: Record<string, { container_id: string; container_name: string }>
+  containers_count?: number
+  updated_at?: string
+}
+
+export default function Settings() {
+  const queryClient = useQueryClient()
+  const [activeTab, setActiveTab] = useState('portainer')
+  const [apiToken, setApiToken] = useState('')
+  const [showTokenInput, setShowTokenInput] = useState(false)
+  const [selectedMappings, setSelectedMappings] = useState<Record<number, string>>({})
+  const [selectedContainers, setSelectedContainers] = useState<Record<number, string>>({})
+  const [containersList, setContainersList] = useState<Record<string, DockerContainer[]>>({})
+
+  // Portainer state
+  const [portainerUrl, setPortainerUrl] = useState('')
+  const [portainerUsername, setPortainerUsername] = useState('')
+  const [portainerPassword, setPortainerPassword] = useState('')
+  const [showPortainerAuth, setShowPortainerAuth] = useState(false)
+  const [portainerContainerMappings, setPortainerContainerMappings] = useState<Record<number, string>>({})
+
+  // Fetch Netdata integration status
+  const { data: netdataStatus, isLoading: netdataLoading } = useQuery<NetdataIntegration>(
+    'netdata-status',
+    () => api.get('/settings/netdata/status').then(res => res.data),
+    {
+      refetchInterval: 30000
+    }
+  )
+
+  // Fetch available servers
+  const { data: servers = [] } = useQuery<Server[]>(
+    'admin-servers',
+    () => api.get('/admin/servers').then(res => res.data)
+  )
+
+  // Fetch Portainer integration status
+  const { data: portainerStatus, refetch: refetchPortainerStatus } = useQuery<PortainerIntegration>(
+    'portainer-status',
+    () => api.get('/settings/portainer/status').then(res => res.data),
+    {
+      refetchInterval: 30000
+    }
+  )
+
+  // Fetch Portainer containers
+  const { data: portainerContainers = [], refetch: refetchPortainerContainers } = useQuery<PortainerContainer[]>(
+    'portainer-containers',
+    () => api.get('/settings/portainer/containers').then(res => res.data),
+    {
+      enabled: portainerStatus?.connected ?? false
+    }
+  )
+
+  // Fetch Netdata nodes
+  const { data: nodes = [], refetch: refetchNodes } = useQuery<NetdataNode[]>(
+    'netdata-nodes',
+    () => api.get('/settings/netdata/nodes').then(res => res.data),
+    {
+      enabled: netdataStatus?.has_token ?? false
+    }
+  )
+
+  // Portainer mutations
+  const authenticatePortainer = useMutation(
+    (data: { url: string; username: string; password: string }) =>
+      api.post('/settings/portainer/auth', data),
+    {
+      onSuccess: (res) => {
+        toast.success(res.data.message || 'Connected to Portainer successfully')
+        queryClient.invalidateQueries('portainer-status')
+        queryClient.invalidateQueries('portainer-containers')
+        setShowPortainerAuth(false)
+        setPortainerUrl('')
+        setPortainerUsername('')
+        setPortainerPassword('')
+      },
+      onError: (error: any) => {
+        toast.error(error.response?.data?.detail || 'Failed to connect to Portainer')
+      }
+    }
+  )
+
+  const setPortainerContainerMapping = useMutation(
+    (data: { server_id: number; container_id: string; container_name: string }) =>
+      api.post('/settings/portainer/container-mapping', data),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries('portainer-status')
+        toast.success('Container mapping saved')
+      },
+      onError: () => {
+        toast.error('Failed to save container mapping')
+      }
+    }
+  )
+
+  const disconnectPortainer = useMutation(
+    () => api.delete('/settings/portainer/disconnect'),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries('portainer-status')
+        queryClient.invalidateQueries('portainer-containers')
+        toast.success('Portainer disconnected successfully')
+      },
+      onError: () => {
+        toast.error('Failed to disconnect Portainer')
+      }
+    }
+  )
+
+  const handlePortainerAuth = () => {
+    if (!portainerUrl || !portainerUsername || !portainerPassword) {
+      toast.error('Please fill in all fields')
+      return
+    }
+
+    authenticatePortainer.mutate({
+      url: portainerUrl,
+      username: portainerUsername,
+      password: portainerPassword
+    })
+  }
+
+  const handlePortainerContainerMapping = (serverId: number, containerId: string) => {
+    const container = portainerContainers.find(c => c.id === containerId)
+    if (container) {
+      setPortainerContainerMapping.mutate({
+        server_id: serverId,
+        container_id: containerId,
+        container_name: container.name
+      })
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Tabs */}
+      <div className="flex space-x-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+        <button
+          onClick={() => setActiveTab('portainer')}
+          className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+            activeTab === 'portainer'
+              ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <CubeIcon className="h-5 w-5" />
+          <span>Portainer</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('netdata')}
+          className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+            activeTab === 'netdata'
+              ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <CloudIcon className="h-5 w-5" />
+          <span>Netdata Cloud</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('general')}
+          className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+            activeTab === 'general'
+              ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <CogIcon className="h-5 w-5" />
+          <span>General</span>
+        </button>
+      </div>
+
+      {/* Portainer Tab Content */}
+      {activeTab === 'portainer' && (
+        <div className="space-y-6">
+          {/* Portainer Connection */}
+          <div className="card">
+            <div className="card-body">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+                  Portainer Integration
+                </h2>
+                {portainerStatus?.connected && (
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                    <CheckCircleIcon className="h-4 w-4 mr-1" />
+                    Connected
+                  </span>
+                )}
+              </div>
+
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                Connect to your Portainer instance to monitor Docker containers running your media servers.
+              </p>
+
+              {portainerStatus?.connected ? (
+                <div className="space-y-4">
+                  <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-slate-500 dark:text-slate-400">URL</p>
+                        <p className="font-medium text-slate-900 dark:text-white">{portainerStatus.url}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500 dark:text-slate-400">Containers</p>
+                        <p className="font-medium text-slate-900 dark:text-white">
+                          {portainerStatus.containers_count || 0} found
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => refetchPortainerContainers()}
+                      className="btn btn-secondary"
+                    >
+                      <ArrowPathIcon className="w-4 h-4 mr-2" />
+                      Refresh Containers
+                    </button>
+                    <button
+                      onClick={() => disconnectPortainer.mutate()}
+                      className="btn btn-danger"
+                    >
+                      <TrashIcon className="w-4 h-4 mr-2" />
+                      Disconnect
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  {showPortainerAuth ? (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                          Portainer URL
+                        </label>
+                        <input
+                          type="text"
+                          value={portainerUrl}
+                          onChange={(e) => setPortainerUrl(e.target.value)}
+                          placeholder="portainer.example.com or https://portainer.example.com"
+                          className="input w-full"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                          Username
+                        </label>
+                        <input
+                          type="text"
+                          value={portainerUsername}
+                          onChange={(e) => setPortainerUsername(e.target.value)}
+                          placeholder="admin"
+                          className="input w-full"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                          Password
+                        </label>
+                        <input
+                          type="password"
+                          value={portainerPassword}
+                          onChange={(e) => setPortainerPassword(e.target.value)}
+                          placeholder="Enter your password"
+                          className="input w-full"
+                        />
+                      </div>
+
+                      <div className="flex gap-3">
+                        <button
+                          onClick={handlePortainerAuth}
+                          disabled={authenticatePortainer.isLoading}
+                          className="btn btn-primary"
+                        >
+                          {authenticatePortainer.isLoading ? (
+                            <>
+                              <ArrowPathIcon className="w-4 h-4 mr-2 animate-spin" />
+                              Connecting...
+                            </>
+                          ) : (
+                            'Connect'
+                          )}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowPortainerAuth(false)
+                            setPortainerUrl('')
+                            setPortainerUsername('')
+                            setPortainerPassword('')
+                          }}
+                          className="btn btn-secondary"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowPortainerAuth(true)}
+                      className="btn btn-primary"
+                    >
+                      <LinkIcon className="w-4 h-4 mr-2" />
+                      Connect to Portainer
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Container Mappings */}
+          {portainerStatus?.connected && portainerContainers.length > 0 && (
+            <div className="card">
+              <div className="card-body">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+                  Container Mappings
+                </h3>
+
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                  Map your media servers to their Docker containers to monitor resource usage.
+                </p>
+
+                <div className="space-y-4">
+                  {servers.map((server) => {
+                    const mapping = portainerStatus.container_mappings?.[server.id.toString()]
+                    return (
+                      <div key={server.id} className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center space-x-3">
+                            <ServerIcon className="h-5 w-5 text-slate-400" />
+                            <div>
+                              <p className="font-medium text-slate-900 dark:text-white">
+                                {server.name}
+                              </p>
+                              <p className="text-sm text-slate-600 dark:text-slate-400">
+                                {server.type.charAt(0).toUpperCase() + server.type.slice(1)} • {server.base_url}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {mapping ? (
+                          <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                            <div className="flex items-center space-x-2">
+                              <CpuChipIcon className="h-5 w-5 text-green-600 dark:text-green-400" />
+                              <span className="text-sm text-green-900 dark:text-green-100">
+                                {mapping.container_name}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setPortainerContainerMappings(prev => {
+                                  const newMappings = { ...prev }
+                                  delete newMappings[server.id]
+                                  return newMappings
+                                })
+                              }}
+                              className="text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-2">
+                            <select
+                              value={portainerContainerMappings[server.id] || ''}
+                              onChange={(e) => {
+                                const containerId = e.target.value
+                                if (containerId) {
+                                  handlePortainerContainerMapping(server.id, containerId)
+                                }
+                              }}
+                              className="input flex-1"
+                            >
+                              <option value="">Select a container...</option>
+                              {portainerContainers.map(container => (
+                                <option key={container.id} value={container.id}>
+                                  {container.name} ({container.state})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Netdata Tab Content */}
+      {activeTab === 'netdata' && (
+        <div className="space-y-6">
+          <div className="card">
+            <div className="card-body">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+                  Netdata Cloud Integration (Deprecated)
+                </h2>
+                {netdataStatus?.has_token && (
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+                    <ExclamationTriangleIcon className="h-4 w-4 mr-1" />
+                    Limited API
+                  </span>
+                )}
+              </div>
+
+              <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <ExclamationTriangleIcon className="h-5 w-5 text-yellow-400" />
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm text-yellow-700">
+                      <strong>Note:</strong> Netdata Cloud's public API does not provide access to metrics data.
+                      Use Portainer integration instead for monitoring container resources.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                Netdata Cloud integration is deprecated. Please use Portainer for container monitoring.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* General Tab Content */}
+      {activeTab === 'general' && (
+        <div className="space-y-6">
+          {/* Metrics Update Settings */}
+          <div className="card">
+            <div className="card-body">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+                Metrics Update Settings
+              </h2>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Default Update Mode
+                  </label>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
+                    Choose how server metrics are updated across the application
+                  </p>
+
+                  <div className="flex space-x-4">
+                    <button
+                      onClick={() => {
+                        localStorage.removeItem('metricsMode') // Clear instead of setting
+                        window.location.reload()
+                      }}
+                      className={`flex-1 p-4 rounded-lg border-2 transition-all ${
+                        localStorage.getItem('metricsMode') !== 'websocket'
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                          : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-center mb-2">
+                        <ArrowPathIcon className="h-8 w-8 text-blue-500" />
+                      </div>
+                      <h3 className="font-medium text-slate-900 dark:text-white">Polling Mode</h3>
+                      <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                        Reliable updates every 2 seconds
+                      </p>
+                      {localStorage.getItem('metricsMode') !== 'websocket' && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 mt-2">
+                          Active
+                        </span>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        localStorage.setItem('metricsMode', 'websocket')
+                        window.location.reload()
+                      }}
+                      className={`flex-1 p-4 rounded-lg border-2 transition-all ${
+                        localStorage.getItem('metricsMode') === 'websocket'
+                          ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                          : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-center mb-2">
+                        <WifiIcon className="h-8 w-8 text-purple-500" />
+                      </div>
+                      <h3 className="font-medium text-slate-900 dark:text-white">WebSocket Mode</h3>
+                      <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                        Real-time updates (requires configuration)
+                      </p>
+                      {localStorage.getItem('metricsMode') === 'websocket' && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 mt-2">
+                          Active
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <ExclamationTriangleIcon className="h-5 w-5 text-blue-400" />
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                        Mode Information
+                      </h3>
+                      <div className="mt-2 text-sm text-blue-700 dark:text-blue-300">
+                        <ul className="list-disc list-inside space-y-1">
+                          <li><strong>Polling:</strong> Requests metrics every 2 seconds. More reliable, works everywhere.</li>
+                          <li><strong>WebSocket:</strong> Real-time streaming updates. Requires proper proxy configuration.</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Other Settings */}
+          <div className="card">
+            <div className="card-body">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+                Other Settings
+              </h2>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Additional settings will be available here in future updates.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

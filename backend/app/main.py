@@ -2,12 +2,20 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy.orm import Session
+import logging
 
 from .core.config import settings
 from .core.database import get_db, engine
 from .models import Base
 from .api.routes import auth, admin, media_user
+from .api.routes import settings as settings_router
 from .services.auth_service import AuthService
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -37,6 +45,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(media_user.router, prefix="/api/me", tags=["Media User"])
+app.include_router(settings_router.router, prefix="/api/settings", tags=["Settings"])
 
 # Import and include WebSocket router
 from .api.routes import websocket

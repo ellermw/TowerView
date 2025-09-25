@@ -10,7 +10,9 @@ import {
   SignalIcon,
   FilmIcon,
   ChevronDownIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  CpuChipIcon,
+  ComputerDesktopIcon
 } from '@heroicons/react/24/outline'
 import { Disclosure, Transition } from '@headlessui/react'
 import toast from 'react-hot-toast'
@@ -69,10 +71,20 @@ interface LiveSession {
   is_4k?: boolean
   is_hdr?: boolean
   is_dolby_vision?: boolean
+
+  // Transcode details
+  transcode_hw_requested?: boolean
+  transcode_hw_decode?: boolean
+  transcode_hw_encode?: boolean
+  transcode_hw_decode_title?: string
+  transcode_hw_encode_title?: string
+  transcode_hw_full_pipeline?: boolean
+  transcode_throttled?: boolean
+  transcode_speed?: number
 }
 
 export default function SessionsList() {
-  const [refreshInterval, setRefreshInterval] = useState(5000) // 5 seconds
+  const [refreshInterval] = useState(5000) // 5 seconds
   const queryClient = useQueryClient()
 
   const { data: sessions = [], isLoading, error } = useQuery<LiveSession[]>(
@@ -145,13 +157,69 @@ export default function SessionsList() {
 
   const getTranscodeInfo = (session: LiveSession) => {
     if (session.video_decision === 'directplay') {
-      return { text: 'Direct Play', color: 'text-green-600 dark:text-green-400' }
+      return {
+        text: 'Direct Play',
+        color: 'text-green-600 dark:text-green-400',
+        icon: null,
+        details: null
+      }
     } else if (session.video_decision === 'copy') {
-      return { text: 'Direct Stream', color: 'text-blue-600 dark:text-blue-400' }
+      return {
+        text: 'Direct Stream',
+        color: 'text-blue-600 dark:text-blue-400',
+        icon: null,
+        details: null
+      }
     } else if (session.video_decision === 'transcode') {
-      return { text: 'Transcoding', color: 'text-orange-600 dark:text-orange-400' }
+      // Check for hardware transcoding
+      const isHwDecode = session.transcode_hw_decode === true
+      const isHwEncode = session.transcode_hw_encode === true
+      const isFullHw = session.transcode_hw_full_pipeline === true
+
+      let transcodeType = 'Software'
+      let icon = ComputerDesktopIcon
+      let color = 'text-orange-600 dark:text-orange-400'
+      let details = []
+
+      if (isFullHw || (isHwDecode && isHwEncode)) {
+        transcodeType = 'Hardware'
+        icon = CpuChipIcon
+        color = 'text-purple-600 dark:text-purple-400'
+        details.push('Full HW')
+      } else if (isHwDecode || isHwEncode) {
+        transcodeType = 'Hybrid'
+        icon = CpuChipIcon
+        color = 'text-indigo-600 dark:text-indigo-400'
+        if (isHwDecode) details.push('HW Decode')
+        if (isHwEncode) details.push('HW Encode')
+      }
+
+      // Add GPU info if available
+      if (session.transcode_hw_decode_title) {
+        details.push(session.transcode_hw_decode_title)
+      } else if (session.transcode_hw_encode_title) {
+        details.push(session.transcode_hw_encode_title)
+      }
+
+      // Add speed if available
+      if (session.transcode_speed) {
+        details.push(`${session.transcode_speed.toFixed(1)}x`)
+      }
+
+      return {
+        text: `${transcodeType} Transcode`,
+        color,
+        icon,
+        details: details.length > 0 ? details.join(' • ') : null,
+        isThrottled: session.transcode_throttled
+      }
     }
-    return { text: 'Unknown', color: 'text-slate-600 dark:text-slate-400' }
+    return {
+      text: 'Unknown',
+      color: 'text-slate-600 dark:text-slate-400',
+      icon: null,
+      details: null
+    }
   }
 
   const getServerTypeColor = (serverType?: string) => {
@@ -211,7 +279,7 @@ export default function SessionsList() {
       sessionsByServer[key].push({
         username: session.username,
         server_id: session.server_id,
-        media_title: session.media_title || session.title || session.full_title
+        media_title: session.title || session.full_title
       })
     })
 
@@ -244,7 +312,7 @@ export default function SessionsList() {
       }
 
       // Get server type from API field
-      let serverType = session.server_type || session.serverType || session.type || ''
+      let serverType = session.server_type || ''
 
       if (serverType) {
         // Normalize the server type
@@ -544,13 +612,24 @@ export default function SessionsList() {
                                                       </div>
 
                                                       <div className="flex items-center">
-                                                        <SignalIcon className="h-4 w-4 text-slate-400 mr-2" />
+                                                        {transcodeInfo.icon ? (
+                                                          <transcodeInfo.icon className={`h-4 w-4 mr-2 ${transcodeInfo.color}`} />
+                                                        ) : (
+                                                          <SignalIcon className="h-4 w-4 text-slate-400 mr-2" />
+                                                        )}
                                                         <div>
-                                                          <div className={`text-sm font-medium ${transcodeInfo.color}`}>
-                                                            {transcodeInfo.text}
+                                                          <div className="flex items-center gap-2">
+                                                            <span className={`text-sm font-medium ${transcodeInfo.color}`}>
+                                                              {transcodeInfo.text}
+                                                            </span>
+                                                            {transcodeInfo.isThrottled && (
+                                                              <span className="text-xs px-1 py-0.5 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded">
+                                                                Throttled
+                                                              </span>
+                                                            )}
                                                           </div>
                                                           <div className="text-xs text-slate-500 dark:text-slate-400">
-                                                            {session.quality_profile || 'Unknown Quality'}
+                                                            {transcodeInfo.details || session.quality_profile || 'Unknown Quality'}
                                                           </div>
                                                         </div>
                                                       </div>

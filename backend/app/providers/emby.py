@@ -249,10 +249,14 @@ class EmbyProvider(BaseProvider):
     async def list_users(self) -> List[Dict[str, Any]]:
         """Get all Emby users"""
         try:
+            if not self.api_key:
+                print("No API key available for listing Emby users")
+                return []
+
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.base_url}/Users",
-                    headers={"X-Emby-Token": self.token},
+                    headers={"X-Emby-Token": self.api_key},
                     timeout=10.0
                 )
 
@@ -286,7 +290,7 @@ class EmbyProvider(BaseProvider):
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.base_url}/Users/{provider_user_id}",
-                    headers={"X-Emby-Token": self.admin_token or self.api_key},
+                    headers={"X-Emby-Token": self.api_key},
                     timeout=10.0
                 )
 

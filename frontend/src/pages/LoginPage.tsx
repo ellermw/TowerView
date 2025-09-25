@@ -58,13 +58,13 @@ export default function LoginPage() {
           api.defaults.headers.common['Authorization'] = `Bearer ${data.access_token}`
           // Show password change modal
           setShowChangePassword(true)
-          toast.info('You must change your password before continuing')
+          toast('You must change your password before continuing', { icon: '⚠️' })
         } else {
           // Normal login flow
           const user = {
             id: 1, // This would come from the token or separate API call
             username: formData.username,
-            type: loginType,
+            type: loginType === 'media' ? 'media_user' as const : 'admin' as const,
           }
           setAuth(user, data.access_token, data.refresh_token)
           toast.success('Login successful!')

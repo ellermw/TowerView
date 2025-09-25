@@ -91,3 +91,18 @@ async def get_current_media_user(current_user: User = Depends(get_current_user))
             detail="Media user access required"
         )
     return current_user
+
+
+async def get_current_user_from_token(token: str, db: Session) -> Optional[User]:
+    """Get user from a raw token string (used for WebSocket auth)"""
+    payload = verify_token(token)
+
+    if payload is None:
+        return None
+
+    user_id: int = payload.get("sub")
+    if user_id is None:
+        return None
+
+    user = db.query(User).filter(User.id == user_id).first()
+    return user

@@ -1,18 +1,25 @@
 import { Routes, Route } from 'react-router-dom'
 import AdminHome from '../components/admin/AdminHome'
-import ServerManagement from '../components/admin/ServerManagement'
+import UnifiedServerManagement from '../components/admin/UnifiedServerManagement'
 import SessionsList from '../components/admin/SessionsList'
 import UsersList from '../components/admin/UsersList'
+import LocalUsersManagement from '../components/admin/LocalUsersManagement'
 import AuditLogs from '../components/admin/AuditLogs'
+import Settings from '../components/admin/Settings'
+import ErrorBoundary from '../components/ErrorBoundary'
 
 export default function AdminDashboard() {
   return (
-    <Routes>
-      <Route path="/" element={<AdminHome />} />
-      <Route path="/servers" element={<ServerManagement />} />
+    <ErrorBoundary>
+      <Routes>
+        <Route path="/" element={<AdminHome />} />
+      <Route path="/servers" element={<UnifiedServerManagement />} />
       <Route path="/sessions" element={<SessionsList />} />
       <Route path="/users" element={<UsersList />} />
+      <Route path="/local-users" element={<LocalUsersManagement />} />
       <Route path="/audit" element={<AuditLogs />} />
+      <Route path="/settings" element={<Settings />} />
     </Routes>
+    </ErrorBoundary>
   )
 }

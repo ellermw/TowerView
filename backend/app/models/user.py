@@ -7,6 +7,7 @@ from ..core.database import Base
 
 class UserType(enum.Enum):
     admin = "admin"
+    local_user = "local_user"  # New type for locally created users with permissions
     media_user = "media_user"
 
 
@@ -37,3 +38,7 @@ class User(Base):
     sessions = relationship("Session", back_populates="user")
     audit_logs_actor = relationship("AuditLog", foreign_keys="AuditLog.actor_id", back_populates="actor")
     playback_events = relationship("PlaybackEvent", back_populates="user")
+    permissions = relationship("UserPermission", back_populates="user", cascade="all, delete-orphan")
+    settings_updates = relationship("SystemSettings", back_populates="updated_by")
+    netdata_integrations = relationship("NetdataIntegration", back_populates="created_by")
+    portainer_integrations = relationship("PortainerIntegration", back_populates="created_by")

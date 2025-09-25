@@ -1,93 +1,226 @@
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
+from sqlalchemy.orm import Session
+import asyncio
 import json
 import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
-from fastapi.security import HTTPBearer
-from jose import JWTError
+from typing import Dict, Set
+from ...core.database import get_db
+from ...models.settings import PortainerIntegration
+from ...models.user import User
+from ...services.portainer_service import PortainerService
+from ...core.security import get_current_user_from_token
 
-from ...core.websocket import get_connection_manager
-from ...core.security import verify_token
-
-router = APIRouter()
-security = HTTPBearer()
 logger = logging.getLogger(__name__)
 
+router = APIRouter()
 
-async def get_current_user_ws(websocket: WebSocket, token: str):
-    """Get current user from WebSocket token"""
-    try:
-        payload = verify_token(token)
-        if payload is None:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-            return None
+class ConnectionManager:
+    """Manages WebSocket connections for real-time metrics"""
 
-        user_id = payload.get("sub")
-        user_type = payload.get("type")
+    def __init__(self):
+        self.active_connections: Dict[str, Set[WebSocket]] = {}
+        self.metrics_tasks: Dict[str, asyncio.Task] = {}
 
-        if not user_id or not user_type:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-            return None
+    async def connect(self, websocket: WebSocket, client_id: str):
+        """Accept and register a new WebSocket connection"""
+        await websocket.accept()
+        if client_id not in self.active_connections:
+            self.active_connections[client_id] = set()
+        self.active_connections[client_id].add(websocket)
+        logger.info(f"Client {client_id} connected. Total connections: {len(self.active_connections[client_id])}")
 
-        return {"id": int(user_id), "type": user_type}
+    def disconnect(self, websocket: WebSocket, client_id: str):
+        """Remove a WebSocket connection"""
+        if client_id in self.active_connections:
+            self.active_connections[client_id].discard(websocket)
+            if not self.active_connections[client_id]:
+                del self.active_connections[client_id]
+                # Cancel the metrics task if no more connections
+                if client_id in self.metrics_tasks:
+                    self.metrics_tasks[client_id].cancel()
+                    del self.metrics_tasks[client_id]
+            logger.info(f"Client {client_id} disconnected")
 
-    except JWTError:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return None
+    async def send_metrics(self, client_id: str, data: dict):
+        """Send metrics to all connections for a specific client"""
+        if client_id in self.active_connections:
+            disconnected = set()
+            for connection in self.active_connections[client_id]:
+                try:
+                    await connection.send_json(data)
+                except Exception as e:
+                    logger.error(f"Error sending to client {client_id}: {e}")
+                    disconnected.add(connection)
+
+            # Remove disconnected clients
+            for conn in disconnected:
+                self.active_connections[client_id].discard(conn)
+
+manager = ConnectionManager()
 
 
-@router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str = None):
-    """WebSocket endpoint for real-time updates"""
-    if not token:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
+async def fetch_server_metrics(
+    server_id: int,
+    user_id: int,
+    db: Session
+) -> dict:
+    """Fetch metrics for a specific server"""
+    integration = db.query(PortainerIntegration).filter_by(created_by_id=user_id).first()
 
-    # Authenticate user
-    user = await get_current_user_ws(websocket, token)
-    if not user:
-        return
+    if not integration or not integration.api_token:
+        return {"error": "Portainer not configured"}
 
-    manager = get_connection_manager()
+    # Get container mapping
+    mappings = integration.container_mappings or {}
+    server_mapping = mappings.get(str(server_id))
 
-    try:
-        # Connect the WebSocket
-        await manager.connect(websocket, str(user["id"]), user["type"])
+    if not server_mapping:
+        return {
+            "server_id": server_id,
+            "cpu_usage": 0,
+            "memory_usage": 0,
+            "memory_used_gb": 0,
+            "memory_total_gb": 0,
+            "gpu": {"available": False}
+        }
 
-        # Send initial connection message
-        await manager.send_personal_message(
-            json.dumps({
-                "type": "connection",
-                "message": "Connected to Towerview real-time updates"
-            }),
-            websocket
+    container_id = server_mapping.get("container_id")
+    container_name = server_mapping.get("container_name")
+
+    async with PortainerService(db) as service:
+        # Fetch CPU/Memory and GPU stats in parallel
+        stats_task = service.get_container_stats(
+            integration.url, integration.api_token, container_id, integration.endpoint_id
         )
+        gpu_task = service.get_gpu_stats(
+            integration.url, integration.api_token, container_id, integration.endpoint_id
+        )
+
+        stats, gpu_stats = await asyncio.gather(stats_task, gpu_task)
+
+        if not stats:
+            return {
+                "server_id": server_id,
+                "cpu_usage": 0,
+                "memory_usage": 0,
+                "memory_used_gb": 0,
+                "memory_total_gb": 0,
+                "gpu": {"available": False}
+            }
+
+        return {
+            "server_id": server_id,
+            "cpu_usage": stats.get("cpu_percent", 0),
+            "memory_usage": stats.get("memory_percent", 0),
+            "memory_used_gb": stats.get("memory_usage_mb", 0) / 1024,
+            "memory_total_gb": stats.get("memory_limit_mb", 0) / 1024,
+            "container": container_name,
+            "timestamp": stats.get("timestamp"),
+            "gpu": gpu_stats
+        }
+
+
+async def metrics_streamer(
+    client_id: str,
+    server_ids: list,
+    user_id: int,
+    db: Session
+):
+    """Continuously stream metrics for specified servers"""
+    logger.info(f"Starting metrics stream for client {client_id}, servers: {server_ids}")
+
+    while client_id in manager.active_connections:
+        try:
+            # Fetch metrics for all requested servers in parallel
+            tasks = [
+                fetch_server_metrics(server_id, user_id, db)
+                for server_id in server_ids
+            ]
+
+            metrics_list = await asyncio.gather(*tasks)
+
+            # Send to client
+            await manager.send_metrics(client_id, {
+                "type": "metrics_update",
+                "data": metrics_list
+            })
+
+            # Sleep briefly to control update rate (500ms for smooth real-time)
+            await asyncio.sleep(0.5)
+
+        except asyncio.CancelledError:
+            logger.info(f"Metrics stream cancelled for client {client_id}")
+            break
+        except Exception as e:
+            logger.error(f"Error in metrics stream for client {client_id}: {e}")
+            await asyncio.sleep(2)  # Back off on error
+
+
+@router.websocket("/ws/metrics")
+async def websocket_metrics(
+    websocket: WebSocket,
+    db: Session = Depends(get_db)
+):
+    """WebSocket endpoint for real-time server metrics"""
+    await websocket.accept()
+
+    # Get token and servers from the first message
+    try:
+        initial_data = await websocket.receive_text()
+        initial_msg = json.loads(initial_data)
+
+        token = initial_msg.get("token")
+        servers = initial_msg.get("servers", [])
+
+        # Authenticate user from token
+        user = await get_current_user_from_token(token, db)
+        if not user or user.type != 'admin':
+            await websocket.close(code=4003, reason="Unauthorized")
+            return
+    except Exception as e:
+        logger.error(f"Initial auth error: {e}")
+        await websocket.close(code=4003, reason="Invalid initial message")
+        return
+
+    client_id = f"user_{user.id}"
+    server_ids = servers if isinstance(servers, list) else []
+
+    # Connect client
+    await manager.connect(websocket, client_id)
+
+    try:
+        # Start metrics streaming task if not already running
+        if client_id not in manager.metrics_tasks and server_ids:
+            task = asyncio.create_task(
+                metrics_streamer(client_id, server_ids, user.id, db)
+            )
+            manager.metrics_tasks[client_id] = task
 
         # Keep connection alive and handle incoming messages
         while True:
-            try:
-                # Wait for incoming messages (client can send heartbeat, etc.)
-                data = await websocket.receive_text()
-                message = json.loads(data)
+            data = await websocket.receive_text()
+            message = json.loads(data)
 
-                # Handle ping/pong for connection health
-                if message.get("type") == "ping":
-                    await manager.send_personal_message(
-                        json.dumps({"type": "pong"}),
-                        websocket
+            # Handle different message types
+            if message.get("type") == "subscribe":
+                # Update server list
+                new_servers = message.get("servers", [])
+                if new_servers:
+                    # Cancel old task
+                    if client_id in manager.metrics_tasks:
+                        manager.metrics_tasks[client_id].cancel()
+
+                    # Start new task with updated servers
+                    task = asyncio.create_task(
+                        metrics_streamer(client_id, new_servers, user.id, db)
                     )
+                    manager.metrics_tasks[client_id] = task
 
-            except WebSocketDisconnect:
-                break
-            except json.JSONDecodeError:
-                # Invalid JSON, ignore
-                continue
-            except Exception as e:
-                logger.error(f"Error handling WebSocket message: {e}")
-                break
+            elif message.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
 
     except WebSocketDisconnect:
-        pass
+        manager.disconnect(websocket, client_id)
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-    finally:
-        # Disconnect the WebSocket
-        await manager.disconnect(websocket, str(user["id"]), user["type"])
+        manager.disconnect(websocket, client_id)
