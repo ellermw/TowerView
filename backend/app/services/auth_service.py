@@ -109,7 +109,8 @@ class AuthService:
         return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
-            expires_in=settings.access_token_expire_minutes * 60
+            expires_in=settings.access_token_expire_minutes * 60,
+            must_change_password=getattr(user, 'must_change_password', False)
         )
 
     async def create_initial_admin(self) -> User:
@@ -124,7 +125,8 @@ class AuthService:
         admin_user = User(
             type=UserType.admin,
             username=settings.admin_username,
-            password_hash=get_password_hash(settings.admin_password)
+            password_hash=get_password_hash(settings.admin_password),
+            must_change_password=True
         )
 
         self.db.add(admin_user)

@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import api from '../services/api'
 import { useAuthStore } from '../store/authStore'
+import ChangePasswordModal from '../components/ChangePasswordModal'
 
 interface LoginRequest {
   admin_login?: {
@@ -21,6 +22,8 @@ interface LoginRequest {
 export default function LoginPage() {
   const [loginType, setLoginType] = useState<'admin' | 'media'>('admin')
   const [showPassword, setShowPassword] = useState(false)
+  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [tempAuthData, setTempAuthData] = useState<any>(null)
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -39,14 +42,33 @@ export default function LoginPage() {
     },
     {
       onSuccess: (data) => {
-        // Get user info from token or make separate API call
-        const user = {
-          id: 1, // This would come from the token or separate API call
-          username: formData.username,
-          type: loginType,
+        // Check if password change is required
+        if (data.must_change_password) {
+          // Store auth data temporarily
+          setTempAuthData({
+            user: {
+              id: 1, // This would come from the token or separate API call
+              username: formData.username,
+              type: loginType,
+            },
+            access_token: data.access_token,
+            refresh_token: data.refresh_token,
+          })
+          // Set auth temporarily so the API calls work
+          api.defaults.headers.common['Authorization'] = `Bearer ${data.access_token}`
+          // Show password change modal
+          setShowChangePassword(true)
+          toast.info('You must change your password before continuing')
+        } else {
+          // Normal login flow
+          const user = {
+            id: 1, // This would come from the token or separate API call
+            username: formData.username,
+            type: loginType,
+          }
+          setAuth(user, data.access_token, data.refresh_token)
+          toast.success('Login successful!')
         }
-        setAuth(user, data.access_token, data.refresh_token)
-        toast.success('Login successful!')
       },
       onError: (error: any) => {
         console.error('Login error:', error)
@@ -207,6 +229,12 @@ export default function LoginPage() {
           </form>
         </div>
       </div>
+
+      <ChangePasswordModal
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+        forcedChange={true}
+      />
     </div>
   )
 }

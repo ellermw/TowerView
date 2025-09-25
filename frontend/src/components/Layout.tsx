@@ -1,9 +1,10 @@
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { Disclosure, Menu, Transition } from '@headlessui/react'
-import { Bars3Icon, XMarkIcon, UserIcon } from '@heroicons/react/24/outline'
+import { Bars3Icon, XMarkIcon, UserIcon, KeyIcon } from '@heroicons/react/24/outline'
 import { useAuthStore } from '../store/authStore'
 import { classNames } from '../utils/classNames'
+import ChangePasswordModal from './ChangePasswordModal'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -12,6 +13,7 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const { user, logout } = useAuthStore()
   const location = useLocation()
+  const [showChangePassword, setShowChangePassword] = useState(false)
 
   const isCurrentPath = (href: string) => {
     // Exact match for root paths
@@ -92,6 +94,24 @@ export default function Layout({ children }: LayoutProps) {
                             {user?.type === 'admin' ? 'Administrator' : 'Media User'}
                           </div>
                         </div>
+                        {user?.type === 'admin' && (
+                          <Menu.Item>
+                            {({ active }) => (
+                              <button
+                                onClick={() => setShowChangePassword(true)}
+                                className={classNames(
+                                  active ? 'bg-slate-100 dark:bg-slate-600' : '',
+                                  'block w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300'
+                                )}
+                              >
+                                <div className="flex items-center">
+                                  <KeyIcon className="h-4 w-4 mr-2" />
+                                  Change Password
+                                </div>
+                              </button>
+                            )}
+                          </Menu.Item>
+                        )}
                         <Menu.Item>
                           {({ active }) => (
                             <button
@@ -157,6 +177,17 @@ export default function Layout({ children }: LayoutProps) {
                   </div>
                 </div>
                 <div className="mt-3 space-y-1">
+                  {user?.type === 'admin' && (
+                    <button
+                      onClick={() => setShowChangePassword(true)}
+                      className="block w-full text-left px-4 py-2 text-base font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"
+                    >
+                      <div className="flex items-center">
+                        <KeyIcon className="h-5 w-5 mr-2" />
+                        Change Password
+                      </div>
+                    </button>
+                  )}
                   <button
                     onClick={logout}
                     className="block w-full text-left px-4 py-2 text-base font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-700"
@@ -173,6 +204,11 @@ export default function Layout({ children }: LayoutProps) {
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {children}
       </main>
+
+      <ChangePasswordModal
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+      />
     </div>
   )
 }

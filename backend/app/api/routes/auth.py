@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
 from ...core.security import verify_token
-from ...schemas.auth import LoginRequest, TokenResponse, RefreshTokenRequest
+from ...schemas.auth import LoginRequest, TokenResponse, RefreshTokenRequest, ChangePasswordRequest
 from ...services.auth_service import AuthService
 
 router = APIRouter()
@@ -82,6 +82,79 @@ async def refresh_token(
 async def logout():
     """Logout (client should discard tokens)"""
     return {"message": "Logout successful"}
+
+
+@router.post("/change-password")
+async def change_password(
+    password_data: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    authorization: str = Header(None)
+):
+    """Change password for the current user"""
+    from ...core.security import verify_password, get_password_hash, verify_token
+    from ...models.user import UserType
+
+    # Get token from header
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid authorization header"
+        )
+
+    token = authorization.replace("Bearer ", "")
+    payload = verify_token(token)
+
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
+
+    # Get user
+    from ...services.user_service import UserService
+    user_service = UserService(db)
+    user = user_service.get_user_by_id(int(user_id))
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Only admin users can change passwords
+    if user.type != UserType.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin users can change passwords"
+        )
+
+    # Validate new passwords match
+    if password_data.new_password != password_data.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New passwords do not match"
+        )
+
+    # Verify current password
+    if not verify_password(password_data.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect"
+        )
+
+    # Update password
+    user.password_hash = get_password_hash(password_data.new_password)
+    user.must_change_password = False
+    db.commit()
+
+    return {"message": "Password changed successfully"}
 
 
 @router.get("/me")
