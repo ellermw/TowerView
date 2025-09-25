@@ -766,9 +766,9 @@ export default function AdminHome() {
         </p>
       </div>
 
-      {/* Active Sessions Section - requires view_sessions permission */}
+      {/* Active Sessions Section */}
       {(isAdmin || hasPermission('view_sessions')) && (
-      <div className="mb-8">
+        <div className="mb-8">
         <div className="flex items-center gap-2 mb-4">
           <SignalIcon className="w-5 h-5 text-green-500" />
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
@@ -1222,9 +1222,12 @@ export default function AdminHome() {
             })}
           </div>
         )}
+      </div>
+      )}
 
       {/* Analytics Section */}
-      <div>
+      {(isAdmin || hasPermission('view_analytics')) && (
+        <div>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <ChartBarIcon className="w-5 h-5 text-blue-500" />
@@ -1435,7 +1438,7 @@ export default function AdminHome() {
           </div>
         )}
       </div>
-      </div>
+      )}
     </div>
   )
 }

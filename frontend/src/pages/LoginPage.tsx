@@ -67,8 +67,7 @@ export default function LoginPage() {
           const user = {
             id: 1, // This would come from the token or separate API call
             username: formData.username,
-            type: loginType === 'media' ? 'media_user' as const :
-                  loginType === 'local' ? 'local_user' as const : 'admin' as const,
+            type: loginType === 'local' ? 'local_user' as const : 'admin' as const,
           }
           setAuth(user, data.access_token, data.refresh_token)
           toast.success('Login successful!')
