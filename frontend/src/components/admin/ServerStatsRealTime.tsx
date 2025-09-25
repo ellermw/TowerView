@@ -98,12 +98,12 @@ export default function ServerStatsRealTime({ serverId, metrics: wsMetrics, isCo
     )
   }
 
-  // Check if container is mapped
-  if (!metrics.container) {
+  // Check if container is mapped or metrics are placeholder
+  if (!metrics.container || (metrics.cpu_usage === 0 && metrics.memory_usage === 0 && !metrics.timestamp)) {
     return (
       <div className="flex items-center p-4 text-slate-500 dark:text-slate-400">
         <ExclamationCircleIcon className="h-5 w-5 mr-2" />
-        <span className="text-sm">No container mapped in Settings</span>
+        <span className="text-sm">Configure Portainer in Settings for metrics</span>
       </div>
     )
   }

@@ -82,7 +82,7 @@ async def send_metrics_loop(client_id: str, server_ids: list):
 
             # Send all metrics
             await manager.send_metrics(client_id, {
-                "type": "metrics",
+                "type": "metrics_update",
                 "data": metrics_list
             })
 
