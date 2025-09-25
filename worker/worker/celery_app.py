@@ -34,8 +34,9 @@ celery_app.conf.beat_schedule = {
         'task': 'worker.tasks.cleanup_old_sessions',
         'schedule': 300.0,  # Every 5 minutes
     },
-    'update-server-status': {
-        'task': 'worker.tasks.update_server_status',
-        'schedule': 60.0,  # Every minute
-    },
+    # Disabled - too aggressive, causes rate limiting
+    # 'update-server-status': {
+    #     'task': 'worker.tasks.update_server_status',
+    #     'schedule': 60.0,  # Every minute
+    # },
 }

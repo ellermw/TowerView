@@ -81,7 +81,8 @@ async def poll_server_sessions(server: Server, db: Session):
 
         # Test connection first
         if not await provider.connect():
-            logger.warning(f"Cannot connect to server {server.name}")
+            logger.warning(f"Cannot connect to server {server.name} - skipping poll")
+            # Don't disable server on connection failure - could be transient
             return
 
         # Get active sessions from provider
