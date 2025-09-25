@@ -16,7 +16,7 @@ logging.basicConfig(
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == 'beat':
         # Run as scheduler
-        celery_app.start(['celery', 'beat', '-l', 'info'])
+        celery_app.start(['', 'beat', '-l', 'info'])
     else:
         # Run as worker
-        celery_app.start(['celery', 'worker', '-l', 'info'])
+        celery_app.start(['', 'worker', '-l', 'info'])

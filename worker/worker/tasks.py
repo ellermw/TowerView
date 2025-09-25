@@ -8,18 +8,42 @@ from sqlalchemy.orm import Session
 from .celery_app import celery_app
 from .database import get_db
 
-# Import shared models
-import sys
-import os
-# Add backend to path
-sys.path.insert(0, '/backend')
-from app.models.server import Server
-from app.models.session import Session as MediaSession
-from app.models.media import Media
-from app.models.user import User
-from app.providers.factory import ProviderFactory
+# Import shared models from local simplified version
+from .models import Server, ServerType, Session as MediaSession, Media, User, Credential
 
 logger = logging.getLogger(__name__)
+
+def create_provider(server: Server, db: Session):
+    """Create a provider instance for the given server without circular imports"""
+    # Import providers here to avoid circular import
+    import sys
+    sys.path.insert(0, '/backend')
+    from app.providers.plex import PlexProvider
+    from app.providers.emby import EmbyProvider
+    from app.providers.jellyfin import JellyfinProvider
+    from .encryption import credential_encryption
+
+    # Get credentials for the server
+    credentials_obj = db.query(Credential).filter(
+        Credential.server_id == server.id
+    ).first()
+
+    credentials = {}
+    if credentials_obj and credentials_obj.encrypted_payload:
+        try:
+            credentials = credential_encryption.decrypt_credentials(credentials_obj.encrypted_payload)
+        except Exception as e:
+            logger.error(f"Failed to decrypt credentials for server {server.id}: {str(e)}")
+            credentials = {}
+
+    if server.type == ServerType.plex:
+        return PlexProvider(server, credentials)
+    elif server.type == ServerType.emby:
+        return EmbyProvider(server, credentials)
+    elif server.type == ServerType.jellyfin:
+        return JellyfinProvider(server, credentials)
+    else:
+        raise ValueError(f"Unsupported server type: {server.type}")
 
 
 @celery_app.task(bind=True)
@@ -53,7 +77,7 @@ def poll_all_servers(self):
 async def poll_server_sessions(server: Server, db: Session):
     """Poll a single server for active sessions"""
     try:
-        provider = ProviderFactory.create_provider(server, db)
+        provider = create_provider(server, db)
 
         # Test connection first
         if not await provider.connect():
@@ -100,7 +124,7 @@ async def process_session(session_data: dict, server: Server, db: Session):
             provider_session_id=provider_session_id,
             state=session_data.get('state', 'unknown'),
             progress_seconds=session_data.get('progress', 0),
-            metadata=session_data
+            session_metadata=session_data
         )
         db.add(session)
         logger.info(f"Created new session {provider_session_id} on server {server.name}")
@@ -109,7 +133,7 @@ async def process_session(session_data: dict, server: Server, db: Session):
         session.state = session_data.get('state', session.state)
         session.progress_seconds = session_data.get('progress', session.progress_seconds)
         session.updated_at = datetime.utcnow()
-        session.metadata = session_data
+        session.session_metadata = session_data
 
     # Try to find/create associated user
     if session_data.get('user_id'):
@@ -170,7 +194,7 @@ async def find_or_create_media(session_data: dict, server: Server, db: Session):
             provider_media_id=provider_media_id,
             title=session_data.get('media_title', 'Unknown'),
             type=session_data.get('media_type', 'unknown'),
-            metadata=session_data
+            media_metadata=session_data
         )
         db.add(media)
         logger.info(f"Created new media '{media.title}' for server {server.name}")
@@ -233,7 +257,7 @@ def update_server_status():
 
         for server in servers:
             try:
-                provider = ProviderFactory.create_provider(server, db)
+                provider = create_provider(server, db)
                 is_online = asyncio.run(provider.connect())
 
                 if is_online != server.enabled:
@@ -270,7 +294,7 @@ def test_connection(server_id: int):
         if not server:
             return {"status": "error", "message": "Server not found"}
 
-        provider = ProviderFactory.create_provider(server, db)
+        provider = create_provider(server, db)
         is_connected = asyncio.run(provider.connect())
 
         return {

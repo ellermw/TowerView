@@ -13,7 +13,8 @@ class PlexProvider(BaseProvider):
 
     def __init__(self, server, credentials):
         super().__init__(server, credentials)
-        self.token = credentials.get("token") if credentials else None
+        # Check for API key first, then token, for Plex authentication
+        self.token = credentials.get("api_key") or credentials.get("token") if credentials else None
         self.username = credentials.get("username") if credentials else None
         self.password = credentials.get("password") if credentials else None
         self.client_id = credentials.get("client_id", "towerview-app") if credentials else "towerview-app"
@@ -23,8 +24,11 @@ class PlexProvider(BaseProvider):
     async def connect(self) -> bool:
         """Test connection to Plex server with Plex.tv authentication"""
         try:
-            # If we have username/password, authenticate with Plex.tv first
-            if self.username and self.password and not self.token:
+            # If we already have a token/API key, skip Plex.tv authentication
+            if self.token:
+                logger.debug(f"Using existing token/API key for server {self.server_id}")
+            # If we have username/password but no token, authenticate with Plex.tv
+            elif self.username and self.password:
                 logger.debug(f"Authenticating with Plex.tv using username: {self.username}")
                 plex_tv_token = await self._authenticate_with_plex_tv()
                 if not plex_tv_token:
@@ -32,12 +36,15 @@ class PlexProvider(BaseProvider):
                     return False
                 self.token = plex_tv_token
                 logger.debug("Plex.tv authentication successful")
+            else:
+                logger.debug("No authentication credentials available")
+                return False
 
             # Test connection to the server
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.base_url}/",
-                    headers={"X-Plex-Token": self.token},
+                    headers={"X-Plex-Token": self.token} if self.token else {},
                     timeout=10.0
                 )
                 logger.debug(f"Plex server connection test - Status: {response.status_code}")

@@ -9,7 +9,6 @@ from ..models.user import User, UserType, ProviderType
 from ..models.server import Server
 from ..schemas.auth import AdminLoginRequest, MediaLoginRequest, TokenResponse
 from .user_service import UserService
-from ..providers.factory import ProviderFactory
 
 
 class AuthService:
@@ -47,6 +46,7 @@ class AuthService:
 
         # Authenticate with the provider
         try:
+            from ..providers.factory import ProviderFactory
             provider = ProviderFactory.create_provider(server)
             auth_result = await provider.authenticate_user(
                 login_data.username,

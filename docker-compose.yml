@@ -61,7 +61,7 @@ services:
     volumes:
       - ./worker:/app
       - ./backend:/backend
-    command: python main.py beat
+    command: celery -A worker.celery_app beat --loglevel=info
 
   frontend:
     build: ./frontend
