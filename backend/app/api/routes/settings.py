@@ -313,8 +313,9 @@ async def disconnect_netdata(
 
 class PortainerAuthRequest(BaseModel):
     url: str
-    username: str
-    password: str
+    username: Optional[str] = None
+    password: Optional[str] = None
+    api_token: Optional[str] = None
     endpoint_id: Optional[int] = 1
 
 
@@ -337,16 +338,33 @@ async def authenticate_portainer(
         if not url.startswith(('http://', 'https://')):
             url = f"https://{url}"
 
-        # Authenticate and get JWT token
-        auth_result = await service.authenticate(url, auth_data.username, auth_data.password)
+        # Check if we have an API token directly or need to authenticate
+        if auth_data.api_token:
+            # Use provided API token directly
+            token = auth_data.api_token
+            # Test the token
+            containers = await service.get_containers(url, token, auth_data.endpoint_id)
+            if containers is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid API token or unable to connect to Portainer"
+                )
+        elif auth_data.username and auth_data.password:
+            # Authenticate with username/password to get JWT token
+            auth_result = await service.authenticate(url, auth_data.username, auth_data.password)
 
-        if not auth_result.get("success"):
+            if not auth_result.get("success"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=auth_result.get("message", "Authentication failed")
+                )
+
+            token = auth_result.get("jwt")
+        else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=auth_result.get("message", "Authentication failed")
+                detail="Either API token or username/password required"
             )
-
-        token = auth_result.get("jwt")
 
         # Save integration settings
         success = await service.save_integration(

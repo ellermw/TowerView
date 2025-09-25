@@ -87,9 +87,15 @@ class PortainerService:
         if not self.session:
             self.session = aiohttp.ClientSession()
 
-        headers = {
-            "Authorization": f"Bearer {token}"
-        }
+        # Check if token is an API key (starts with ptr_) or JWT
+        if token.startswith("ptr_"):
+            headers = {
+                "X-API-Key": token
+            }
+        else:
+            headers = {
+                "Authorization": f"Bearer {token}"
+            }
 
         try:
             # Portainer API for Docker containers
@@ -127,9 +133,15 @@ class PortainerService:
         if not self.session:
             self.session = aiohttp.ClientSession()
 
-        headers = {
-            "Authorization": f"Bearer {token}"
-        }
+        # Check if token is an API key (starts with ptr_) or JWT
+        if token.startswith("ptr_"):
+            headers = {
+                "X-API-Key": token
+            }
+        else:
+            headers = {
+                "Authorization": f"Bearer {token}"
+            }
 
         try:
             # Docker stats endpoint through Portainer
@@ -210,9 +222,15 @@ class PortainerService:
         if not self.session:
             self.session = aiohttp.ClientSession()
 
-        headers = {
-            "Authorization": f"Bearer {token}"
-        }
+        # Check if token is an API key (starts with ptr_) or JWT
+        if token.startswith("ptr_"):
+            headers = {
+                "X-API-Key": token
+            }
+        else:
+            headers = {
+                "Authorization": f"Bearer {token}"
+            }
 
         try:
             # Create exec instance to run intel_gpu_top
@@ -388,9 +406,15 @@ class PortainerService:
         if not self.session:
             self.session = aiohttp.ClientSession()
 
-        headers = {
-            "Authorization": f"Bearer {token}"
-        }
+        # Check if token is an API key (starts with ptr_) or JWT
+        if token.startswith("ptr_"):
+            headers = {
+                "X-API-Key": token
+            }
+        else:
+            headers = {
+                "Authorization": f"Bearer {token}"
+            }
 
         try:
             info_url = f"{url}/api/endpoints/{endpoint_id}/docker/containers/{container_id}/json"
