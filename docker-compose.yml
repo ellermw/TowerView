@@ -29,7 +29,7 @@ services:
       REDIS_URL: redis://redis:6379
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-me}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      ADMIN_PASSWORD: admin
     ports:
       - "8000:8000"
     volumes:
