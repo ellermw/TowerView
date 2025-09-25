@@ -1222,7 +1222,6 @@ export default function AdminHome() {
             })}
           </div>
         )}
-      </div>
 
       {/* Analytics Section */}
       <div>
@@ -1435,6 +1434,7 @@ export default function AdminHome() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   )

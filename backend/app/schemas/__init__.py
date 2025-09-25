@@ -2,7 +2,6 @@ from .auth import *
 from .user import *
 from .server import *
 from .session import *
-from .media import *
 
 __all__ = [
     # Auth schemas
@@ -24,9 +23,5 @@ __all__ = [
 
     # Session schemas
     "SessionBase",
-    "SessionResponse",
-
-    # Media schemas
-    "MediaBase",
-    "MediaResponse"
+    "SessionResponse"
 ]

@@ -11,7 +11,7 @@ class Session(Base):
     server_id = Column(Integer, ForeignKey("servers.id"), nullable=False)
     provider_session_id = Column(String, nullable=False)  # Session ID from the media server
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Can be null if user not in our system
-    media_id = Column(Integer, ForeignKey("media.id"), nullable=True)
+    media_item_id = Column(String, nullable=True)  # Media item ID from provider
     state = Column(String, nullable=False)  # playing, paused, stopped, buffering
     progress_seconds = Column(Integer, default=0)
     started_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -22,4 +22,3 @@ class Session(Base):
     # Relationships
     server = relationship("Server", back_populates="sessions")
     user = relationship("User", back_populates="sessions")
-    media = relationship("Media", back_populates="sessions")

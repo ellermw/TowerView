@@ -30,7 +30,6 @@ class Server(Base):
     owner = relationship("User", foreign_keys=[owner_id])
     credentials = relationship("Credential", back_populates="server", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="server")
-    media = relationship("Media", back_populates="server")
     users = relationship("User", foreign_keys="User.server_id", back_populates="server")
     playback_events = relationship("PlaybackEvent", back_populates="server", cascade="all, delete-orphan")
     user_permissions = relationship("UserPermission", back_populates="server", cascade="all, delete-orphan")

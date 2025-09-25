@@ -8,7 +8,7 @@ import logging
 from .core.config import settings
 from .core.database import get_db, engine
 from .models import Base
-from .api.routes import auth, admin, media_user
+from .api.routes import auth, admin
 from .api.routes import settings as settings_router
 from .services.auth_service import AuthService
 from .services.metrics_cache_service import metrics_cache
@@ -66,7 +66,6 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
-app.include_router(media_user.router, prefix="/api/me", tags=["Media User"])
 app.include_router(settings_router.router, prefix="/api/settings", tags=["Settings"])
 
 # Import and include WebSocket router
