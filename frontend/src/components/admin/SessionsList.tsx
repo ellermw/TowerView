@@ -255,36 +255,8 @@ export default function SessionsList() {
       if (!serverType || !['plex', 'emby', 'jellyfin'].includes(serverType)) {
         const serverName = (session.server_name || '').toLowerCase()
 
-        // Specific server name mappings based on your servers
-        if (serverName.includes("mike's plex") || serverName === "mike's plex") {
-          serverType = 'plex'
-        } else if (serverName.includes('emby full') || serverName === 'emby full #1') {
-          serverType = 'emby'
-        } else if (serverName === 'the tower #1') {
-          // This is ambiguous - we have both Plex and Jellyfin with this name
-          // Check server_id to differentiate
-          const serverId = Number(session.server_id)
-          console.log(`The Tower #1 detected - server_id: ${serverId}, original server_type: "${session.server_type}"`)
-
-          // Map server IDs to types based on what we know:
-          // ID 3: Plex (The Tower #1)
-          // ID 4: Mike's Plex
-          // ID 5: Emby Full #1
-          // ID 6: Unknown
-          // ID 7: Jellyfin (The Tower #1)
-          if (serverId === 3) {
-            serverType = 'plex'
-            console.log(`  -> Assigned to Plex (server_id: 3)`)
-          } else if (serverId === 7 || serverId === 6) {
-            // Both 6 and 7 could be Jellyfin based on your setup
-            serverType = 'jellyfin'
-            console.log(`  -> Assigned to Jellyfin (server_id: ${serverId})`)
-          } else {
-            // Try to infer from other clues or default to jellyfin for non-ID-3 Tower #1
-            console.log(`  -> Server ID ${serverId} for The Tower #1, assigning to Jellyfin`)
-            serverType = 'jellyfin'
-          }
-        } else if (serverName.includes('plex')) {
+        // Try to infer from server name if type is missing
+        if (serverName.includes('plex')) {
           serverType = 'plex'
         } else if (serverName.includes('emby')) {
           serverType = 'emby'

@@ -38,6 +38,7 @@ class LiveSessionResponse(BaseModel):
     # Server info (added by API)
     server_name: Optional[str] = None
     server_id: Optional[int] = None
+    server_type: Optional[str] = None
 
     # Media details
     title: Optional[str] = None

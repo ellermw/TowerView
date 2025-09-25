@@ -388,26 +388,12 @@ export default function AdminHome() {
         serverType = String(serverType).toLowerCase().trim()
       }
 
-      // If no server type or it's invalid, infer from name
+      // If no server type or it's invalid, try to infer from name
       if (!serverType || !['plex', 'emby', 'jellyfin'].includes(serverType)) {
         const serverName = (session.server_name || '').toLowerCase()
 
-        // Specific server name mappings
-        if (serverName.includes("mike's plex") || serverName === "mike's plex") {
-          serverType = 'plex'
-        } else if (serverName.includes('emby full') || serverName === 'emby full #1') {
-          serverType = 'emby'
-        } else if (serverName === 'the tower #1') {
-          // Differentiate based on server_id
-          const serverId = Number(session.server_id)
-
-          if (serverId === 3) {
-            serverType = 'plex'
-          } else {
-            // Any other Tower #1 is Jellyfin (IDs 6, 7, or others)
-            serverType = 'jellyfin'
-          }
-        } else if (serverName.includes('plex')) {
+        // Try to infer from server name if type is missing
+        if (serverName.includes('plex')) {
           serverType = 'plex'
         } else if (serverName.includes('emby')) {
           serverType = 'emby'
