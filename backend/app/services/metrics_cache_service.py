@@ -64,7 +64,7 @@ class MetricsCacheService:
         """Collect metrics from all configured servers"""
         from ..core.database import SessionLocal
         from ..models.server import Server
-        from ..models.settings import SystemSettings as Settings
+        from ..models.settings import PortainerIntegration
         from ..services.portainer_service import PortainerService
 
         db = SessionLocal()
@@ -72,21 +72,18 @@ class MetricsCacheService:
             # Get all active servers
             servers = db.query(Server).filter(Server.enabled == True).all()
 
-            # Get Portainer settings
-            portainer_settings = db.query(Settings).filter(
-                Settings.category == "portainer"
-            ).all()
+            # Get Portainer integration settings
+            portainer_integration = db.query(PortainerIntegration).filter(
+                PortainerIntegration.enabled == True
+            ).first()
 
-            if not portainer_settings:
-                logger.debug("No Portainer settings configured")
+            if not portainer_integration:
+                logger.debug("No Portainer integration configured")
                 return
 
-            # Convert settings to dict
-            settings_dict = {s.key: s.value for s in portainer_settings}
-
-            url = settings_dict.get("url")
-            api_token = settings_dict.get("api_token")
-            endpoint_id = int(settings_dict.get("endpoint_id", 2))
+            url = portainer_integration.url
+            api_token = portainer_integration.api_token
+            endpoint_id = portainer_integration.endpoint_id or 2
 
             if not url or not api_token:
                 logger.debug("No Portainer URL or API token configured")
@@ -95,20 +92,59 @@ class MetricsCacheService:
             # Collect metrics for each server
             new_metrics = {}
 
+            # Get container mappings
+            container_mappings = portainer_integration.container_mappings or {}
+
             async with PortainerService(db) as portainer:
+                # Get all containers to resolve short IDs to full IDs
+                all_containers = await portainer.get_containers(url, api_token, endpoint_id)
+                container_id_map = {}
+                if all_containers:
+                    for container in all_containers:
+                        # Map short ID (12 chars) to full ID
+                        short_id = container.get('id', '')[:12]
+                        full_id = container.get('id', '')
+                        if short_id and full_id:
+                            container_id_map[short_id] = full_id
+
                 for server in servers:
                     try:
-                        container_id = settings_dict.get(f"server_{server.id}_container")
-                        if not container_id:
+                        # Check if this server has a container mapping
+                        mapping = container_mappings.get(str(server.id))
+                        if not mapping:
                             logger.debug(f"No container mapped for server {server.id}")
                             continue
 
+                        # Extract container ID from mapping (handle both dict and string formats)
+                        if isinstance(mapping, dict):
+                            container_id = mapping.get('container_id')
+                        else:
+                            container_id = mapping
+
+                        if not container_id:
+                            logger.debug(f"No container ID in mapping for server {server.id}")
+                            continue
+
+                        # Resolve to full ID if we have a short ID
+                        if len(container_id) <= 12:
+                            full_container_id = container_id_map.get(container_id, container_id)
+                        else:
+                            full_container_id = container_id
+
                         # Get container stats
-                        stats = await portainer.get_container_stats(url, api_token, container_id, endpoint_id)
+                        stats = await portainer.get_container_stats(url, api_token, full_container_id, endpoint_id)
 
                         if stats:
-                            # Process metrics
-                            metrics = self._process_container_stats(stats, container_id)
+                            # Stats are already processed by PortainerService
+                            metrics = {
+                                "cpu_usage": stats.get("cpu_percent", 0),
+                                "memory_usage": stats.get("memory_percent", 0),
+                                "memory_used_gb": stats.get("memory_usage_mb", 0) / 1024,
+                                "memory_total_gb": stats.get("memory_limit_mb", 0) / 1024,
+                                "container": container_id,
+                                "gpu": {"available": False},
+                                "timestamp": stats.get("timestamp")
+                            }
                             new_metrics[server.id] = metrics
                             logger.debug(f"Collected metrics for server {server.id}: CPU={metrics['cpu_usage']:.1f}%, Memory={metrics['memory_usage']:.1f}%")
 
