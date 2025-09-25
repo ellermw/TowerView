@@ -1,0 +1,74 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: mediaapp
+      POSTGRES_PASSWORD: change_me
+      POSTGRES_DB: mediaapp
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+  redis:
+    image: redis:7
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6380:6379"
+
+  backend:
+    build: ./backend
+    depends_on:
+      - db
+      - redis
+    environment:
+      DATABASE_URL: postgresql://mediaapp:change_me@db:5432/mediaapp
+      REDIS_URL: redis://redis:6379
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-me}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+    ports:
+      - "192.168.1.74:8000:8000"
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build: ./worker
+    depends_on:
+      - backend
+      - redis
+    environment:
+      DATABASE_URL: postgresql://mediaapp:change_me@db:5432/mediaapp
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./worker:/app
+
+  worker-beat:
+    build: ./worker
+    depends_on:
+      - backend
+      - redis
+    environment:
+      DATABASE_URL: postgresql://mediaapp:change_me@db:5432/mediaapp
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./worker:/app
+    command: python main.py beat
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3002:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://192.168.1.74:8000
+
+volumes:
+  db-data:
+  redis-data:

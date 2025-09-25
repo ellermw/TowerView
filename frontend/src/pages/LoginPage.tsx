@@ -1,0 +1,212 @@
+import { useState } from 'react'
+import { useMutation } from 'react-query'
+import toast from 'react-hot-toast'
+import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
+import api from '../services/api'
+import { useAuthStore } from '../store/authStore'
+
+interface LoginRequest {
+  admin_login?: {
+    username: string
+    password: string
+  }
+  media_login?: {
+    server_id: number
+    provider: string
+    username: string
+    password: string
+  }
+}
+
+export default function LoginPage() {
+  const [loginType, setLoginType] = useState<'admin' | 'media'>('admin')
+  const [showPassword, setShowPassword] = useState(false)
+  const [formData, setFormData] = useState({
+    username: '',
+    password: '',
+    server_id: '',
+    provider: 'plex',
+  })
+
+  const { setAuth } = useAuthStore()
+
+  const loginMutation = useMutation(
+    async (data: LoginRequest) => {
+      console.log('API Base URL:', api.defaults.baseURL)
+      console.log('Login data:', data)
+      const response = await api.post('/auth/login', data)
+      return response.data
+    },
+    {
+      onSuccess: (data) => {
+        // Get user info from token or make separate API call
+        const user = {
+          id: 1, // This would come from the token or separate API call
+          username: formData.username,
+          type: loginType,
+        }
+        setAuth(user, data.access_token, data.refresh_token)
+        toast.success('Login successful!')
+      },
+      onError: (error: any) => {
+        console.error('Login error:', error)
+        console.error('Error response:', error.response)
+        toast.error(error.response?.data?.detail || error.message || 'Login failed')
+      },
+    }
+  )
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (loginType === 'admin') {
+      loginMutation.mutate({
+        admin_login: {
+          username: formData.username,
+          password: formData.password,
+        },
+      })
+    } else {
+      loginMutation.mutate({
+        media_login: {
+          server_id: parseInt(formData.server_id),
+          provider: formData.provider,
+          username: formData.username,
+          password: formData.password,
+        },
+      })
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <div>
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">
+            Welcome to Towerview
+          </h2>
+          <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
+            Multi-server media monitoring platform
+          </p>
+        </div>
+
+        <div className="bg-white dark:bg-slate-800 shadow rounded-lg p-6">
+          {/* Login Type Toggle */}
+          <div className="flex rounded-lg bg-slate-100 dark:bg-slate-700 p-1 mb-6">
+            <button
+              type="button"
+              className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors ${
+                loginType === 'admin'
+                  ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              onClick={() => setLoginType('admin')}
+            >
+              Admin Login
+            </button>
+            <button
+              type="button"
+              className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors ${
+                loginType === 'media'
+                  ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              onClick={() => setLoginType('media')}
+            >
+              Media User Login
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {loginType === 'media' && (
+              <>
+                <div>
+                  <label htmlFor="provider" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Provider
+                  </label>
+                  <select
+                    id="provider"
+                    value={formData.provider}
+                    onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
+                    className="input mt-1"
+                    required
+                  >
+                    <option value="plex">Plex</option>
+                    <option value="emby">Emby</option>
+                    <option value="jellyfin">Jellyfin</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="server_id" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Server ID
+                  </label>
+                  <input
+                    id="server_id"
+                    type="number"
+                    value={formData.server_id}
+                    onChange={(e) => setFormData({ ...formData, server_id: e.target.value })}
+                    className="input mt-1"
+                    placeholder="Enter server ID"
+                    required
+                  />
+                </div>
+              </>
+            )}
+
+            <div>
+              <label htmlFor="username" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                Username
+              </label>
+              <input
+                id="username"
+                type="text"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                className="input mt-1"
+                placeholder="Enter your username"
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                Password
+              </label>
+              <div className="relative mt-1">
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  className="input pr-10"
+                  placeholder="Enter your password"
+                  required
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeSlashIcon className="h-5 w-5 text-slate-400" />
+                  ) : (
+                    <EyeIcon className="h-5 w-5 text-slate-400" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loginMutation.isLoading}
+              className="w-full btn-primary py-3"
+            >
+              {loginMutation.isLoading ? 'Signing in...' : 'Sign in'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,133 @@
+# Environment files
+.env
+.env.local
+.env.production
+.env.*.local
+*.env
+
+# Database
+*.db
+*.sqlite3
+*.sqlite
+postgres-data/
+redis-data/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+*.egg-info/
+.pytest_cache/
+*.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+.eggs/
+*.egg
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm
+.yarn-integrity
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+build/
+dist/
+frontend/dist/
+frontend/build/
+backend/static/
+backend/media/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# Credentials and secrets
+credentials.json
+secrets/
+*.key
+*.pem
+*.cert
+*.crt
+
+# Backup files
+*.backup
+*.bak
+*.tmp
+*.temp
+*.orig
+
+# Celery
+celerybeat-schedule
+celerybeat-schedule.db
+celerybeat.pid
+worker/celerybeat-schedule*
+
+# Testing
+.coverage
+.hypothesis/
+.pytest_cache/
+coverage.xml
+*.cover
+.cache
+nosetests.xml
+test-results/
+
+# Documentation
+docs/_build/
+docs/.doctrees/
+
+# Media files (for testing)
+*.mp4
+*.mkv
+*.avi
+*.mp3
+*.flac
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webm
+
+# Temporary files
+tmp/
+temp/
+.temp/
