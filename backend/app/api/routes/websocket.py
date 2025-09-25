@@ -61,44 +61,23 @@ manager = ConnectionManager()
 
 async def fetch_server_metrics(
     server_id: int,
-    user_id: int,
-    db: Session
+    user_id: int
 ) -> dict:
     """Fetch metrics for a specific server"""
-    integration = db.query(PortainerIntegration).filter_by(created_by_id=user_id).first()
+    # Create a new session for this fetch to avoid connection pool issues
+    from ...core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        integration = db.query(PortainerIntegration).filter_by(created_by_id=user_id).first()
 
-    if not integration or not integration.api_token:
-        return {"error": "Portainer not configured"}
+        if not integration or not integration.api_token:
+            return {"error": "Portainer not configured"}
 
-    # Get container mapping
-    mappings = integration.container_mappings or {}
-    server_mapping = mappings.get(str(server_id))
+        # Get container mapping
+        mappings = integration.container_mappings or {}
+        server_mapping = mappings.get(str(server_id))
 
-    if not server_mapping:
-        return {
-            "server_id": server_id,
-            "cpu_usage": 0,
-            "memory_usage": 0,
-            "memory_used_gb": 0,
-            "memory_total_gb": 0,
-            "gpu": {"available": False}
-        }
-
-    container_id = server_mapping.get("container_id")
-    container_name = server_mapping.get("container_name")
-
-    async with PortainerService(db) as service:
-        # Fetch CPU/Memory and GPU stats in parallel
-        stats_task = service.get_container_stats(
-            integration.url, integration.api_token, container_id, integration.endpoint_id
-        )
-        gpu_task = service.get_gpu_stats(
-            integration.url, integration.api_token, container_id, integration.endpoint_id
-        )
-
-        stats, gpu_stats = await asyncio.gather(stats_task, gpu_task)
-
-        if not stats:
+        if not server_mapping:
             return {
                 "server_id": server_id,
                 "cpu_usage": 0,
@@ -108,23 +87,48 @@ async def fetch_server_metrics(
                 "gpu": {"available": False}
             }
 
-        return {
-            "server_id": server_id,
-            "cpu_usage": stats.get("cpu_percent", 0),
-            "memory_usage": stats.get("memory_percent", 0),
-            "memory_used_gb": stats.get("memory_usage_mb", 0) / 1024,
-            "memory_total_gb": stats.get("memory_limit_mb", 0) / 1024,
-            "container": container_name,
-            "timestamp": stats.get("timestamp"),
-            "gpu": gpu_stats
-        }
+        container_id = server_mapping.get("container_id")
+        container_name = server_mapping.get("container_name")
+
+        async with PortainerService(db) as service:
+            # Fetch CPU/Memory and GPU stats in parallel
+            stats_task = service.get_container_stats(
+                integration.url, integration.api_token, container_id, integration.endpoint_id
+            )
+            gpu_task = service.get_gpu_stats(
+                integration.url, integration.api_token, container_id, integration.endpoint_id
+            )
+
+            stats, gpu_stats = await asyncio.gather(stats_task, gpu_task)
+
+            if not stats:
+                return {
+                    "server_id": server_id,
+                    "cpu_usage": 0,
+                    "memory_usage": 0,
+                    "memory_used_gb": 0,
+                    "memory_total_gb": 0,
+                    "gpu": {"available": False}
+                }
+
+            return {
+                "server_id": server_id,
+                "cpu_usage": stats.get("cpu_percent", 0),
+                "memory_usage": stats.get("memory_percent", 0),
+                "memory_used_gb": stats.get("memory_usage_mb", 0) / 1024,
+                "memory_total_gb": stats.get("memory_limit_mb", 0) / 1024,
+                "container": container_name,
+                "timestamp": stats.get("timestamp"),
+                "gpu": gpu_stats
+            }
+    finally:
+        db.close()
 
 
 async def metrics_streamer(
     client_id: str,
     server_ids: list,
-    user_id: int,
-    db: Session
+    user_id: int
 ):
     """Continuously stream metrics for specified servers"""
     logger.info(f"Starting metrics stream for client {client_id}, servers: {server_ids}")
@@ -133,7 +137,7 @@ async def metrics_streamer(
         try:
             # Fetch metrics for all requested servers in parallel
             tasks = [
-                fetch_server_metrics(server_id, user_id, db)
+                fetch_server_metrics(server_id, user_id)
                 for server_id in server_ids
             ]
 
@@ -208,7 +212,7 @@ async def websocket_metrics(
         # Start metrics streaming task if not already running
         if client_id not in manager.metrics_tasks and server_ids:
             task = asyncio.create_task(
-                metrics_streamer(client_id, server_ids, user.id, db)
+                metrics_streamer(client_id, server_ids, user.id)
             )
             manager.metrics_tasks[client_id] = task
 
@@ -228,7 +232,7 @@ async def websocket_metrics(
 
                     # Start new task with updated servers
                     task = asyncio.create_task(
-                        metrics_streamer(client_id, new_servers, user.id, db)
+                        metrics_streamer(client_id, new_servers, user.id)
                     )
                     manager.metrics_tasks[client_id] = task
 
