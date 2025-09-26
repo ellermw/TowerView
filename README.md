@@ -1,6 +1,8 @@
 # TowerView - Unified Media Server Management Platform
 
-TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff.
+**Version 2.1.0 - Production Ready & Stable**
+
+TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. The platform has been thoroughly tested and optimized for production use with excellent stability and performance.
 
 ## 🎯 Features
 
@@ -305,15 +307,24 @@ MIT License - see [LICENSE](LICENSE) file for details
 
 ## 📝 Changelog
 
-### Version 2.0.0 (Current)
+### Version 2.1.0 (Current - Stable)
+- ✨ Custom server icons for Plex, Emby, and Jellyfin
+- ✨ Simplified transcoding display for Emby/Jellyfin
+- ✨ Transparent icon backgrounds for theme compatibility
+- 🎨 Visual improvements across all pages
+- 🔧 Stabilized session monitoring
+- 🔧 Improved bandwidth caching system
+- 📊 Enhanced real-time metrics display
+
+### Version 2.0.0
 - ✨ Complete transformation to admin/support tool
 - ✨ Comprehensive audit logging system
 - ✨ Granular permission system for local users
-- ✨ Real-time bandwidth monitoring
+- ✨ Real-time bandwidth monitoring with caching
 - ✨ GPU metrics support
 - ✨ Enhanced container management
 - ✨ Improved session termination
-- 🔧 Fixed hardware transcoding detection
+- 🔧 Fixed hardware transcoding detection for Plex
 - 🔧 Fixed local user permissions
 - 🔧 Improved error handling
 

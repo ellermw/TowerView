@@ -49,19 +49,19 @@ const SERVER_TYPE_CONFIG = {
   plex: {
     name: 'Plex',
     color: 'orange',
-    icon: '🎬',
+    icon: '/plex.png',
     bgGradient: 'from-orange-500 to-amber-500'
   },
   emby: {
     name: 'Emby',
     color: 'green',
-    icon: '📺',
+    icon: '/emby.png',
     bgGradient: 'from-green-500 to-emerald-500'
   },
   jellyfin: {
     name: 'Jellyfin',
     color: 'purple',
-    icon: '🎭',
+    icon: '/jellyfin.png',
     bgGradient: 'from-purple-500 to-indigo-500'
   }
 }
@@ -307,7 +307,7 @@ export default function UnifiedServerManagement() {
           {/* Server Info */}
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-start space-x-3">
-              <div className="text-3xl">{typeConfig.icon}</div>
+              <img src={typeConfig.icon} alt={typeConfig.name} className="h-8 w-8 rounded" />
               <div>
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                   {server.name}
@@ -599,7 +599,7 @@ export default function UnifiedServerManagement() {
                 <div className="flex items-center mb-4">
                   <div className={`h-1 flex-1 bg-gradient-to-r ${typeConfig.bgGradient} rounded-full mr-4`} />
                   <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
-                    <span className="text-2xl mr-2">{typeConfig.icon}</span>
+                    <img src={typeConfig.icon} alt={typeConfig.name} className="h-6 w-6 mr-2 inline-block" />
                     {typeConfig.name} Servers ({typeServers.length})
                   </h2>
                   <div className={`h-1 flex-1 bg-gradient-to-r ${typeConfig.bgGradient} rounded-full ml-4`} />

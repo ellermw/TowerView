@@ -171,7 +171,24 @@ export default function SessionsList() {
         details: null
       }
     } else if (session.video_decision === 'transcode') {
-      // Check for hardware transcoding
+      // For Emby and Jellyfin, just show "Transcode" without HW/SW details
+      if (session.server_type === 'emby' || session.server_type === 'jellyfin') {
+        let details = []
+
+        // Add speed if available
+        if (session.transcode_speed) {
+          details.push(`${session.transcode_speed.toFixed(1)}x`)
+        }
+
+        return {
+          text: 'Transcode',
+          color: 'text-orange-600 dark:text-orange-400',
+          icon: ComputerDesktopIcon,
+          details: details.length > 0 ? details : null
+        }
+      }
+
+      // For Plex, check for hardware transcoding
       const isHwDecode = session.transcode_hw_decode === true || !!session.transcode_hw_decode_title
       const isHwEncode = session.transcode_hw_encode === true || !!session.transcode_hw_encode_title
       const isFullHw = session.transcode_hw_full_pipeline === true
@@ -236,16 +253,34 @@ export default function SessionsList() {
   }
 
   const getServerTypeIcon = (serverType?: string) => {
-    // Return appropriate icon or emoji for server type
+    // Return appropriate icon image for server type
     switch (serverType?.toLowerCase()) {
       case 'plex':
-        return '🍊' // Plex = Orange
+        return (
+          <img
+            src="/plex.png"
+            alt="Plex"
+            className="h-8 w-8 rounded"
+          />
+        )
       case 'emby':
-        return '🟢' // Emby = Green
+        return (
+          <img
+            src="/emby.png"
+            alt="Emby"
+            className="h-8 w-8 rounded"
+          />
+        )
       case 'jellyfin':
-        return '🔵' // Jellyfin = Blue
+        return (
+          <img
+            src="/jellyfin.png"
+            alt="Jellyfin"
+            className="h-8 w-8 rounded"
+          />
+        )
       default:
-        return '⚪' // Unknown = Gray
+        return <span className="text-2xl">⚪</span> // Unknown = Gray emoji
     }
   }
 
@@ -459,7 +494,7 @@ export default function SessionsList() {
                               ) : (
                                 <ChevronRightIcon className="h-5 w-5 text-slate-500" />
                               )}
-                              <span className="text-2xl ml-2">{getServerTypeIcon(serverType)}</span>
+                              <div className="ml-2">{getServerTypeIcon(serverType)}</div>
                               <h2 className="ml-2 text-xl font-bold text-slate-900 dark:text-white">
                                 {getServerTypeName(serverType)}
                               </h2>

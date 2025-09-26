@@ -416,13 +416,31 @@ export default function AdminHome() {
   const getServerTypeIcon = (serverType?: string) => {
     switch (serverType?.toLowerCase()) {
       case 'plex':
-        return '🍊'
+        return (
+          <img
+            src="/plex.png"
+            alt="Plex"
+            className="h-6 w-6 inline-block rounded"
+          />
+        )
       case 'emby':
-        return '🟢'
+        return (
+          <img
+            src="/emby.png"
+            alt="Emby"
+            className="h-6 w-6 inline-block rounded"
+          />
+        )
       case 'jellyfin':
-        return '🔵'
+        return (
+          <img
+            src="/jellyfin.png"
+            alt="Jellyfin"
+            className="h-6 w-6 inline-block rounded"
+          />
+        )
       default:
-        return '⚪'
+        return <span className="text-lg">⚪</span>
     }
   }
 
@@ -921,7 +939,7 @@ export default function AdminHome() {
                               ) : (
                                 <ChevronRightIcon className="h-4 w-4 text-slate-500" />
                               )}
-                              <span className="text-xl">{getServerTypeIcon(serverType)}</span>
+                              <div className="inline-flex items-center">{getServerTypeIcon(serverType)}</div>
                               <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                                 {getServerTypeName(serverType)}
                               </h3>
