@@ -172,8 +172,8 @@ export default function SessionsList() {
       }
     } else if (session.video_decision === 'transcode') {
       // Check for hardware transcoding
-      const isHwDecode = session.transcode_hw_decode === true
-      const isHwEncode = session.transcode_hw_encode === true
+      const isHwDecode = session.transcode_hw_decode === true || !!session.transcode_hw_decode_title
+      const isHwEncode = session.transcode_hw_encode === true || !!session.transcode_hw_encode_title
       const isFullHw = session.transcode_hw_full_pipeline === true
 
       let transcodeType = 'Software'

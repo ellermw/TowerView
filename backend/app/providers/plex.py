@@ -346,6 +346,15 @@ class PlexProvider(BaseProvider):
                     # Extract TranscodeSession info for hardware transcoding details
                     transcode_elem = video.find('TranscodeSession')
                     if transcode_elem is not None:
+                        # Debug logging
+                        logger.debug(f"TranscodeSession attributes for {session_data.get('title')}:")
+                        logger.debug(f"  transcodeHwRequested: {transcode_elem.get('transcodeHwRequested')}")
+                        logger.debug(f"  transcodeHwDecoding: {transcode_elem.get('transcodeHwDecoding')}")
+                        logger.debug(f"  transcodeHwEncoding: {transcode_elem.get('transcodeHwEncoding')}")
+                        logger.debug(f"  transcodeHwDecodingTitle: {transcode_elem.get('transcodeHwDecodingTitle')}")
+                        logger.debug(f"  transcodeHwEncodingTitle: {transcode_elem.get('transcodeHwEncodingTitle')}")
+                        logger.debug(f"  transcodeHwFullPipeline: {transcode_elem.get('transcodeHwFullPipeline')}")
+
                         session_data["transcode_hw_requested"] = transcode_elem.get("transcodeHwRequested") == "1"
                         session_data["transcode_hw_decode"] = transcode_elem.get("transcodeHwDecoding") == "1"
                         session_data["transcode_hw_encode"] = transcode_elem.get("transcodeHwEncoding") == "1"

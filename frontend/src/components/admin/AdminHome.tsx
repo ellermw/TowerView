@@ -1041,12 +1041,12 @@ export default function AdminHome() {
                                                       <span className="capitalize font-medium text-slate-900 dark:text-white">{session.state}</span>
                                                       {session.video_decision === 'transcode' ? (
                                                         <>
-                                                          {(session.transcode_hw_full_pipeline || (session.transcode_hw_decode && session.transcode_hw_encode)) ? (
+                                                          {(session.transcode_hw_full_pipeline || (session.transcode_hw_decode && session.transcode_hw_encode) || (session.transcode_hw_decode_title && session.transcode_hw_encode_title)) ? (
                                                             <span className="flex items-center text-purple-600 dark:text-purple-400 ml-1">
                                                               <CpuChipIcon className="w-3 h-3 mr-0.5" />
                                                               <span className="text-xs">HW Transcode</span>
                                                             </span>
-                                                          ) : session.transcode_hw_decode || session.transcode_hw_encode ? (
+                                                          ) : (session.transcode_hw_decode || session.transcode_hw_encode || session.transcode_hw_decode_title || session.transcode_hw_encode_title) ? (
                                                             <span className="flex items-center text-blue-600 dark:text-blue-400 ml-1">
                                                               <CpuChipIcon className="w-3 h-3 mr-0.5" />
                                                               <span className="text-xs">Partial HW</span>

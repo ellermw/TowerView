@@ -20,6 +20,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+# Enable DEBUG logging for Plex provider to debug HW transcoding
+logging.getLogger("app.providers.plex").setLevel(logging.DEBUG)
+
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
