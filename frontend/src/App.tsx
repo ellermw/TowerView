@@ -5,7 +5,7 @@ import AdminDashboard from './pages/AdminDashboard'
 import Layout from './components/Layout'
 
 function App() {
-  const { user, isAuthenticated } = useAuthStore()
+  const { isAuthenticated } = useAuthStore()
 
   if (!isAuthenticated) {
     return <LoginPage />

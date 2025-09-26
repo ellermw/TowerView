@@ -34,13 +34,8 @@ interface ServerMetrics {
 }
 
 export default function ServerStatsRealTime({ serverId, metrics: wsMetrics, isConnected: wsConnected }: ServerStatsRealTimeProps) {
-  // Get saved preference from localStorage or default to polling
-  const getSavedMode = () => {
-    const saved = localStorage.getItem('metricsMode')
-    return saved === 'websocket'
-  }
-
-  const [useWebSocket, setUseWebSocket] = useState(getSavedMode())
+  // Always use WebSocket by default (admin's choice)
+  const [useWebSocket, setUseWebSocket] = useState(true)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
 
   // Use parent's WebSocket connection status if available
@@ -70,14 +65,13 @@ export default function ServerStatsRealTime({ serverId, metrics: wsMetrics, isCo
   // Track if we're switching modes to prevent rapid toggling
   const [isSwitching, setIsSwitching] = useState(false)
 
-  // Save mode preference when it changes
+  // Toggle mode without saving to localStorage
   const toggleMode = () => {
     if (isSwitching) return // Prevent rapid toggling
 
     setIsSwitching(true)
     const newMode = !useWebSocket
     setUseWebSocket(newMode)
-    localStorage.setItem('metricsMode', newMode ? 'websocket' : 'polling')
 
     if (newMode) {
       // Switching to WebSocket mode
@@ -285,16 +279,18 @@ export default function ServerStatsRealTime({ serverId, metrics: wsMetrics, isCo
           </div>
 
           {/* Time display - below the status line */}
-          {lastUpdate && (
-            <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Last updated: {lastUpdate.toLocaleTimeString('en-US', {
+          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400 h-4 min-w-[160px]">
+            {lastUpdate ? (
+              `Last updated: ${lastUpdate.toLocaleTimeString('en-US', {
                 hour: '2-digit',
                 minute: '2-digit',
                 second: '2-digit',
                 hour12: true
-              })}
-            </div>
-          )}
+              })}`
+            ) : (
+              <span className="invisible">Last updated: 00:00:00 AM</span>
+            )}
+          </div>
         </div>
 
         {/* Container Info */}

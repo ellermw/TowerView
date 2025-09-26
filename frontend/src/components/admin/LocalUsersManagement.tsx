@@ -132,6 +132,12 @@ export default function LocalUsersManagement() {
     {
       onSuccess: () => {
         queryClient.invalidateQueries('local-users')
+        alert('User deleted successfully')
+      },
+      onError: (error: any) => {
+        console.error('Delete user error:', error)
+        const errorMessage = error.response?.data?.detail || error.message || 'Failed to delete user'
+        alert(`Error deleting user: ${errorMessage}`)
       }
     }
   )

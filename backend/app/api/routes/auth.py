@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Header, Request
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
-from ...core.security import verify_token
+from ...core.security import verify_token, get_current_user
 from ...schemas.auth import LoginRequest, TokenResponse, RefreshTokenRequest, ChangePasswordRequest
 from ...services.auth_service import AuthService
+from ...services.audit_service import AuditService
 
 router = APIRouter()
 
@@ -12,6 +13,7 @@ router = APIRouter()
 @router.post("/login", response_model=TokenResponse)
 async def login(
     login_data: LoginRequest,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Login with either admin credentials or media user credentials"""
@@ -59,6 +61,9 @@ async def login(
             detail="Must provide either admin_login, media_login, or local_login"
         )
 
+    # Log successful login
+    AuditService.log_login(db, user, request)
+
     return auth_service.create_tokens(user)
 
 
@@ -99,8 +104,15 @@ async def refresh_token(
 
 
 @router.post("/logout")
-async def logout():
+async def logout(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
     """Logout (client should discard tokens)"""
+    # Log logout if user is authenticated
+    if current_user:
+        AuditService.log_logout(db, current_user, request)
     return {"message": "Logout successful"}
 
 

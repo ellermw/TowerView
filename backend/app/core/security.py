@@ -93,6 +93,24 @@ async def get_current_media_user(current_user: User = Depends(get_current_user))
     return current_user
 
 
+async def get_current_local_user(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.type != UserType.local_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Local user access required"
+        )
+    return current_user
+
+
+async def get_current_admin_or_local_user(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.type not in [UserType.admin, UserType.local_user]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or local user access required"
+        )
+    return current_user
+
+
 def get_current_user_from_token(token: str, db: Session) -> Optional[User]:
     """Get user from a raw token string (used for WebSocket auth)"""
     payload = verify_token(token)

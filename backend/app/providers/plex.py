@@ -419,6 +419,111 @@ class PlexProvider(BaseProvider):
             logger.error(f"Error parsing Plex sessions: {e}")
             return []
 
+    async def get_version_info(self) -> Dict[str, Any]:
+        """Get Plex server version information"""
+        try:
+            # Ensure we have a valid token
+            await self._ensure_valid_token()
+
+            if not self.token:
+                logger.debug("No valid token available for getting Plex version")
+                return {}
+
+            async with httpx.AsyncClient() as client:
+                # Get server info which includes version
+                response = await client.get(
+                    f"{self.base_url}/",
+                    headers={"X-Plex-Token": self.token, "Accept": "application/json"},
+                    timeout=10.0
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    media_container = data.get("MediaContainer", {})
+
+                    # Get latest version from Docker Hub
+                    latest_version = await self._get_latest_version(client)
+
+                    current_version = media_container.get("version", "Unknown")
+
+                    return {
+                        "current_version": current_version,
+                        "platform": media_container.get("platform", "Unknown"),
+                        "platform_version": media_container.get("platformVersion", "Unknown"),
+                        "device": media_container.get("device", "Unknown"),
+                        "product": media_container.get("product", "Plex Media Server"),
+                        "latest_version": latest_version,
+                        "update_available": self._compare_versions(current_version, latest_version) if latest_version else False
+                    }
+
+                return {}
+
+        except Exception as e:
+            logger.error(f"Error getting Plex version info: {e}")
+            return {}
+
+    async def _get_latest_version(self, client: httpx.AsyncClient) -> Optional[str]:
+        """Get the latest Plex version from Docker Hub"""
+        try:
+            print("Fetching Plex latest version from Docker Hub...")
+            response = await client.get(
+                "https://hub.docker.com/v2/repositories/plexinc/pms-docker/tags?page_size=20",
+                timeout=10.0
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                tags = data.get("results", [])
+
+                # Filter for version tags (format: X.Y.Z.XXXXX-XXXXXXX)
+                import re
+                version_pattern = re.compile(r'^(\d+)\.(\d+)\.(\d+)\.(\d+)-([\w]+)$')
+
+                versions = []
+                for tag in tags:
+                    tag_name = tag.get("name", "")
+                    # Skip 'latest' and other non-version tags
+                    if tag_name in ['latest', 'plex-user-test', 'beta', 'public']:
+                        continue
+                    match = version_pattern.match(tag_name)
+                    if match:
+                        versions.append(tag_name)
+
+                # Sort versions and return the latest
+                if versions:
+                    # Sort by version numbers
+                    versions.sort(key=lambda v: [int(x) for x in v.split('-')[0].split('.')], reverse=True)
+                    print(f"Found Plex versions: {versions[:3]}, returning: {versions[0]}")
+                    return versions[0]
+                else:
+                    print("No Plex versions found in tags")
+
+            return None
+
+        except Exception as e:
+            logger.debug(f"Could not fetch latest Plex version: {e}")
+            return None
+
+    def _compare_versions(self, current: str, latest: str) -> bool:
+        """Compare version strings to determine if update is available"""
+        try:
+            # Parse version strings (e.g., "1.32.5.7349-8f4248874")
+            current_parts = current.split("-")[0].split(".")
+            latest_parts = latest.split("-")[0].split(".")
+
+            for i in range(min(len(current_parts), len(latest_parts))):
+                curr_num = int(current_parts[i])
+                latest_num = int(latest_parts[i])
+
+                if latest_num > curr_num:
+                    return True
+                elif latest_num < curr_num:
+                    return False
+
+            return False
+        except:
+            return False
+
     async def list_users(self) -> List[Dict[str, Any]]:
         """Get all Plex users with access to this server"""
         try:

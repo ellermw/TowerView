@@ -297,6 +297,167 @@ class PortainerService:
             logger.debug(f"GPU stats not available: {e}")
             return {"available": False, "gpu_usage": 0}
 
+    async def start_container(self, url: str, token: str, container_id: str, endpoint_id: int = 1) -> Dict[str, Any]:
+        """Start a stopped container"""
+        if not self.session:
+            self.session = aiohttp.ClientSession()
+
+        # Check if token is an API key (starts with ptr_) or JWT
+        if token.startswith("ptr_"):
+            headers = {"X-API-Key": token}
+        else:
+            headers = {"Authorization": f"Bearer {token}"}
+
+        try:
+            start_url = f"{url}/api/endpoints/{endpoint_id}/docker/containers/{container_id}/start"
+            async with self.session.post(start_url, headers=headers, ssl=False) as response:
+                if response.status in [204, 304]:  # 204 = success, 304 = already started
+                    return {"success": True, "message": "Container started successfully"}
+                else:
+                    error = await response.text()
+                    logger.error(f"Failed to start container: {error}")
+                    return {"success": False, "message": f"Failed to start container: {response.status}"}
+        except Exception as e:
+            logger.error(f"Error starting container: {e}")
+            return {"success": False, "message": f"Error: {str(e)}"}
+
+    async def stop_container(self, url: str, token: str, container_id: str, endpoint_id: int = 1) -> Dict[str, Any]:
+        """Stop a running container"""
+        if not self.session:
+            self.session = aiohttp.ClientSession()
+
+        # Check if token is an API key (starts with ptr_) or JWT
+        if token.startswith("ptr_"):
+            headers = {"X-API-Key": token}
+        else:
+            headers = {"Authorization": f"Bearer {token}"}
+
+        try:
+            stop_url = f"{url}/api/endpoints/{endpoint_id}/docker/containers/{container_id}/stop"
+            async with self.session.post(stop_url, headers=headers, ssl=False) as response:
+                if response.status in [204, 304]:  # 204 = success, 304 = already stopped
+                    return {"success": True, "message": "Container stopped successfully"}
+                else:
+                    error = await response.text()
+                    logger.error(f"Failed to stop container: {error}")
+                    return {"success": False, "message": f"Failed to stop container: {response.status}"}
+        except Exception as e:
+            logger.error(f"Error stopping container: {e}")
+            return {"success": False, "message": f"Error: {str(e)}"}
+
+    async def restart_container(self, url: str, token: str, container_id: str, endpoint_id: int = 1) -> Dict[str, Any]:
+        """Restart a container"""
+        if not self.session:
+            self.session = aiohttp.ClientSession()
+
+        # Check if token is an API key (starts with ptr_) or JWT
+        if token.startswith("ptr_"):
+            headers = {"X-API-Key": token}
+        else:
+            headers = {"Authorization": f"Bearer {token}"}
+
+        try:
+            restart_url = f"{url}/api/endpoints/{endpoint_id}/docker/containers/{container_id}/restart"
+            async with self.session.post(restart_url, headers=headers, ssl=False) as response:
+                if response.status == 204:  # 204 = success
+                    return {"success": True, "message": "Container restarted successfully"}
+                else:
+                    error = await response.text()
+                    logger.error(f"Failed to restart container: {error}")
+                    return {"success": False, "message": f"Failed to restart container: {response.status}"}
+        except Exception as e:
+            logger.error(f"Error restarting container: {e}")
+            return {"success": False, "message": f"Error: {str(e)}"}
+
+    async def recreate_container(self, url: str, token: str, container_id: str, endpoint_id: int = 1) -> Dict[str, Any]:
+        """Recreate a container (for updates) by pulling latest image and recreating"""
+        if not self.session:
+            self.session = aiohttp.ClientSession()
+
+        # Check if token is an API key (starts with ptr_) or JWT
+        if token.startswith("ptr_"):
+            headers = {"X-API-Key": token}
+        else:
+            headers = {"Authorization": f"Bearer {token}"}
+
+        try:
+            # First, get container info to preserve configuration
+            info_url = f"{url}/api/endpoints/{endpoint_id}/docker/containers/{container_id}/json"
+            async with self.session.get(info_url, headers=headers, ssl=False) as response:
+                if response.status != 200:
+                    return {"success": False, "message": "Failed to get container info"}
+
+                container_info = await response.json()
+                image_name = container_info.get("Config", {}).get("Image", "")
+                container_name = container_info.get("Name", "").lstrip("/")
+
+            # Pull the latest image
+            pull_url = f"{url}/api/endpoints/{endpoint_id}/docker/images/create"
+            pull_params = {"fromImage": image_name}
+
+            async with self.session.post(pull_url, headers=headers, params=pull_params, ssl=False) as response:
+                if response.status not in [200, 201]:
+                    logger.error(f"Failed to pull latest image: {response.status}")
+                    return {"success": False, "message": "Failed to pull latest image"}
+
+                # Wait for pull to complete
+                await response.text()
+
+            # Stop the container
+            stop_result = await self.stop_container(url, token, container_id, endpoint_id)
+            if not stop_result.get("success"):
+                return {"success": False, "message": "Failed to stop container for update"}
+
+            # Remove the old container
+            remove_url = f"{url}/api/endpoints/{endpoint_id}/docker/containers/{container_id}"
+            async with self.session.delete(remove_url, headers=headers, ssl=False) as response:
+                if response.status not in [204, 404]:  # 204 = success, 404 = already removed
+                    return {"success": False, "message": "Failed to remove old container"}
+
+            # Create a new container with the same configuration
+            create_url = f"{url}/api/endpoints/{endpoint_id}/docker/containers/create"
+            create_params = {"name": container_name}
+
+            # Use the original container config
+            create_body = {
+                "Image": image_name,
+                "Env": container_info.get("Config", {}).get("Env", []),
+                "ExposedPorts": container_info.get("Config", {}).get("ExposedPorts", {}),
+                "HostConfig": {
+                    "Binds": container_info.get("HostConfig", {}).get("Binds", []),
+                    "PortBindings": container_info.get("HostConfig", {}).get("PortBindings", {}),
+                    "RestartPolicy": container_info.get("HostConfig", {}).get("RestartPolicy", {"Name": "unless-stopped"}),
+                    "NetworkMode": container_info.get("HostConfig", {}).get("NetworkMode", "bridge"),
+                    "Devices": container_info.get("HostConfig", {}).get("Devices", [])
+                },
+                "NetworkingConfig": container_info.get("NetworkingConfig", {})
+            }
+
+            async with self.session.post(create_url, headers=headers, params=create_params, json=create_body, ssl=False) as response:
+                if response.status != 201:
+                    error = await response.text()
+                    logger.error(f"Failed to create new container: {error}")
+                    return {"success": False, "message": "Failed to create new container"}
+
+                result = await response.json()
+                new_container_id = result.get("Id")
+
+            # Start the new container
+            start_url = f"{url}/api/endpoints/{endpoint_id}/docker/containers/{new_container_id}/start"
+            async with self.session.post(start_url, headers=headers, ssl=False) as response:
+                if response.status not in [204, 304]:  # 204 = success, 304 = already started
+                    return {"success": False, "message": "Failed to start updated container"}
+
+            return {
+                "success": True,
+                "message": "Container updated successfully",
+                "new_container_id": new_container_id
+            }
+
+        except Exception as e:
+            logger.error(f"Error recreating container: {e}")
+            return {"success": False, "message": f"Error: {str(e)}"}
+
     async def save_integration(self, user_id: int, url: str, token: str, endpoint_id: int = 1) -> bool:
         """Save Portainer integration settings to database"""
         from ..models.settings import PortainerIntegration

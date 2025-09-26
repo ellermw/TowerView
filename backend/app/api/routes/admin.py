@@ -1,10 +1,10 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
-from ...core.security import get_current_admin_user
-from ...models.user import User
+from ...core.security import get_current_admin_user, get_current_admin_or_local_user
+from ...models.user import User, UserType
 from ...models.server import Server
 from ...schemas.server import ServerCreate, ServerResponse, ServerUpdate
 from ...schemas.session import SessionResponse, LiveSessionResponse
@@ -16,6 +16,7 @@ from ...schemas.user import (
 from ...schemas.analytics import AnalyticsFilters, DashboardAnalyticsResponse
 from ...services.server_service import ServerService
 from ...services.analytics_service import AnalyticsService
+from ...services.audit_service import AuditService
 from ...providers.factory import ProviderFactory
 from ...models.playback_analytics import PlaybackEvent
 from datetime import datetime
@@ -27,6 +28,7 @@ router = APIRouter()
 @router.post("/servers", response_model=ServerResponse)
 async def create_server(
     server_data: ServerCreate,
+    request: Request,
     current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -69,35 +71,80 @@ async def create_server(
         )
 
     server = server_service.create_server(server_data, current_user.id)
+
+    # Log server creation
+    AuditService.log_server_action(
+        db, current_user, "add", server.id, server.name, server.type.value, request
+    )
+
     return ServerResponse.from_orm(server)
 
 
 @router.get("/servers", response_model=List[ServerResponse])
 async def list_servers(
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_or_local_user),
     db: Session = Depends(get_db)
 ):
-    """List all servers"""
+    """List all servers accessible by the current user"""
+    from ...models.user import UserType
+    from ...models.user_permission import UserPermission
+
     server_service = ServerService(db)
-    servers = server_service.get_servers_by_owner(current_user.id)
+
+    if current_user.type == UserType.admin:
+        # Admins see all servers they own
+        servers = server_service.get_servers_by_owner(current_user.id)
+    else:
+        # Local users see servers they have permissions for
+        permissions = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id
+        ).all()
+        server_ids = [perm.server_id for perm in permissions]
+        if server_ids:
+            servers = db.query(Server).filter(Server.id.in_(server_ids)).all()
+        else:
+            servers = []
+
     return [ServerResponse.from_orm(server) for server in servers]
 
 
 @router.get("/servers/{server_id}", response_model=ServerResponse)
 async def get_server(
     server_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_or_local_user),
     db: Session = Depends(get_db)
 ):
     """Get server details"""
+    from ...models.user import UserType
+    from ...models.user_permission import UserPermission
+
     server_service = ServerService(db)
     server = server_service.get_server_by_id(server_id)
 
-    if not server or server.owner_id != current_user.id:
+    if not server:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Server not found"
         )
+
+    # Check access
+    if current_user.type == UserType.admin:
+        if server.owner_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Server not found"
+            )
+    else:
+        # Local user - check permissions
+        permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.server_id == server_id
+        ).first()
+        if not permission:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Server not found"
+            )
 
     return ServerResponse.from_orm(server)
 
@@ -181,12 +228,29 @@ async def delete_server(
 
 @router.get("/sessions", response_model=List[LiveSessionResponse])
 async def get_all_sessions(
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_or_local_user),
     db: Session = Depends(get_db)
 ):
-    """Get active sessions from all servers"""
+    """Get active sessions from all servers accessible by the user"""
+    from ...models.user import UserType
+    from ...models.user_permission import UserPermission
+
     server_service = ServerService(db)
-    servers = server_service.get_servers_by_owner(current_user.id)
+
+    # Get servers based on user type
+    if current_user.type == UserType.admin:
+        servers = server_service.get_servers_by_owner(current_user.id)
+    else:
+        # Local users see servers they have permission to view sessions for
+        permissions = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.can_view_sessions == True
+        ).all()
+        server_ids = [perm.server_id for perm in permissions]
+        if server_ids:
+            servers = db.query(Server).filter(Server.id.in_(server_ids)).all()
+        else:
+            servers = []
 
     all_sessions = []
 
@@ -275,6 +339,51 @@ async def track_session_analytics(db: Session, server_id: int, session: dict):
     except Exception as e:
         print(f"Error tracking analytics for session: {e}")
         db.rollback()
+
+
+@router.get("/servers/{server_id}/version")
+async def get_server_version(
+    server_id: int,
+    current_user: User = Depends(get_current_admin_or_local_user),
+    db: Session = Depends(get_db)
+):
+    """Get server version information"""
+    from ...providers.factory import ProviderFactory
+
+    # Get the server
+    server = db.query(Server).filter(Server.id == server_id).first()
+    if not server:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Server not found"
+        )
+
+    # Check permissions for local users
+    if current_user.type == UserType.local_user:
+        from ...models.user_permission import UserPermission
+        permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.server_id == server_id
+        ).first()
+        if not permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No permission to view this server"
+            )
+
+    try:
+        # Create provider and get version info
+        provider = ProviderFactory.create_provider(server, db)
+        version_info = await provider.get_version_info()
+        return version_info
+    except Exception as e:
+        logger.error(f"Error getting version info for server {server.name}: {e}")
+        # Return empty version info instead of error to prevent UI issues
+        return {
+            "current_version": "Unknown",
+            "latest_version": "Unknown",
+            "update_available": False
+        }
 
 
 @router.get("/servers/{server_id}/sessions", response_model=List[LiveSessionResponse])
@@ -395,6 +504,7 @@ async def get_gpu_status(
 async def terminate_session(
     server_id: int,
     session_id: str,
+    request: Request,
     current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -426,16 +536,22 @@ async def terminate_session(
                 detail=detail
             )
 
+        # Get session info for audit log (if available)
+        session_info = "Session"
+        try:
+            sessions = await provider.get_current_sessions()
+            for session in sessions:
+                if session.get("Id") == session_id or session.get("session_id") == session_id:
+                    username = session.get("UserName", session.get("username", "Unknown"))
+                    session_info = username
+                    break
+        except:
+            pass
+
         # Log the action
-        from ...models.audit_log import AuditLog
-        audit_log = AuditLog(
-            actor_id=current_user.id,
-            action="session_terminated",
-            target=f"session:{session_id}",
-            details={"server_id": server_id}
+        AuditService.log_session_terminated(
+            db, current_user, session_id, session_info, server.name, request
         )
-        db.add(audit_log)
-        db.commit()
 
         return {"message": "Session terminated successfully"}
 
@@ -530,12 +646,28 @@ async def get_session_counts(
 
 @router.get("/users", response_model=List[ServerUserResponse])
 async def get_all_users(
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_or_local_user),
     db: Session = Depends(get_db)
 ):
     """Get users from all servers"""
+    from ...models.user_permission import UserPermission
+
     server_service = ServerService(db)
-    servers = server_service.get_servers_by_owner(current_user.id)
+
+    # Get servers based on user type
+    if current_user.type == UserType.admin:
+        servers = server_service.get_servers_by_owner(current_user.id)
+    else:
+        # Local users - get servers they have view_users permission for
+        permissions = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.can_view_users == True
+        ).all()
+        server_ids = [perm.server_id for perm in permissions]
+        if server_ids:
+            servers = db.query(Server).filter(Server.id.in_(server_ids)).all()
+        else:
+            servers = []
 
     all_users = []
     for server in servers:
@@ -558,14 +690,51 @@ async def get_all_users(
     return all_users
 
 
+@router.get("/bandwidth")
+async def get_bandwidth_history(
+    current_user: User = Depends(get_current_admin_or_local_user),
+    db: Session = Depends(get_db)
+):
+    """Get cached bandwidth history data"""
+    from datetime import datetime, timedelta
+
+    # Get bandwidth history from cache (last 5 minutes)
+    from ...services.bandwidth_cache import get_bandwidth_history
+
+    bandwidth_data = await get_bandwidth_history()
+    return bandwidth_data
+
+
 @router.post("/analytics")
 async def get_analytics(
     filters: AnalyticsFilters,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_or_local_user),
     db: Session = Depends(get_db)
 ):
     """Get analytics data for dashboard"""
+    from ...models.user import UserType
+    from ...models.user_permission import UserPermission
     from ...services.analytics_service import AnalyticsService
+
+    # Filter servers based on user permissions
+    if current_user.type == UserType.local_user:
+        # Get servers the local user has analytics permissions for
+        permissions = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.can_view_analytics == True
+        ).all()
+        allowed_server_ids = [perm.server_id for perm in permissions]
+
+        # Apply server filter to analytics
+        if filters.server_id:
+            # Check if requested server is allowed
+            if filters.server_id not in allowed_server_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No permission to view analytics for this server"
+                )
+        # Note: if server_id is None, the analytics service will use all servers
+        # which we'll need to filter in the service itself
 
     analytics_service = AnalyticsService(db)
     try:
@@ -605,6 +774,7 @@ async def get_local_users(
 @router.post("/local-users", response_model=LocalUserResponse)
 async def create_local_user(
     user_data: LocalUserCreate,
+    request: Request,
     current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -633,6 +803,11 @@ async def create_local_user(
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    # Log user creation
+    AuditService.log_user_created(
+        db, current_user, new_user.id, new_user.username, "local_user", request
+    )
 
     return new_user
 
@@ -664,6 +839,7 @@ async def get_local_user(
 async def update_local_user(
     user_id: int,
     user_data: LocalUserUpdate,
+    request: Request,
     current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -682,16 +858,26 @@ async def update_local_user(
             detail="User not found"
         )
 
-    # Update fields if provided
-    if user_data.email is not None:
+    # Track changes for audit log
+    changes = {}
+    if user_data.email is not None and user_data.email != user.email:
+        changes["email"] = {"old": user.email, "new": user_data.email}
         user.email = user_data.email
     if user_data.password is not None:
+        changes["password"] = "changed"
         user.password_hash = get_password_hash(user_data.password)
-    if user_data.must_change_password is not None:
+    if user_data.must_change_password is not None and user_data.must_change_password != user.must_change_password:
+        changes["must_change_password"] = {"old": user.must_change_password, "new": user_data.must_change_password}
         user.must_change_password = user_data.must_change_password
 
     db.commit()
     db.refresh(user)
+
+    # Log user modification if there were changes
+    if changes:
+        AuditService.log_user_modified(
+            db, current_user, user.id, user.username, changes, request
+        )
 
     return user
 
@@ -699,11 +885,15 @@ async def update_local_user(
 @router.delete("/local-users/{user_id}")
 async def delete_local_user(
     user_id: int,
+    request: Request,
     current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
     """Delete a local user"""
     from ...models.user import UserType
+    from ...models.user_permission import UserPermission
+    from ...models.session import Session
+    from ...models.playback_analytics import PlaybackEvent
 
     user = db.query(User).filter(
         User.id == user_id,
@@ -716,8 +906,28 @@ async def delete_local_user(
             detail="User not found"
         )
 
+    # Store username before deletion
+    username = user.username
+    user_type = user.type.value if hasattr(user.type, 'value') else str(user.type)
+
+    # Delete related records first to avoid foreign key constraints
+    # Delete user permissions
+    db.query(UserPermission).filter(UserPermission.user_id == user_id).delete()
+
+    # Delete or update sessions
+    db.query(Session).filter(Session.user_id == user_id).update({"user_id": None})
+
+    # Delete or update playback events
+    db.query(PlaybackEvent).filter(PlaybackEvent.user_id == user_id).update({"user_id": None})
+
+    # Now delete the user
     db.delete(user)
     db.commit()
+
+    # Log user deletion
+    AuditService.log_user_deleted(
+        db, current_user, username, user_type, request
+    )
 
     return {"message": "User deleted successfully"}
 
@@ -727,10 +937,11 @@ async def delete_local_user(
 @router.get("/local-users/{user_id}/permissions", response_model=List[UserPermissionSchema])
 async def get_user_permissions(
     user_id: int,
-    current_user: User = Depends(get_current_admin_user),  # For now, keep admin-only
+    current_user: User = Depends(get_current_admin_or_local_user),  # Allow local users to fetch their own
     db: Session = Depends(get_db)
 ):
     """Get permissions for a local user"""
+    from ...models.user import UserType
     from ...models.user_permission import UserPermission
 
     # Check authorization: users can fetch their own permissions, admins can fetch anyone's
@@ -873,3 +1084,68 @@ async def revoke_user_permission(
     db.commit()
 
     return {"message": "Permission revoked successfully"}
+# Audit Log endpoints
+@router.get("/audit-logs")
+async def get_audit_logs(
+    page: int = 1,
+    per_page: int = 50,
+    action: str = None,
+    actor_type: str = None,
+    search: str = None,
+    start_date: datetime = None,
+    end_date: datetime = None,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Get audit logs - admin only"""
+    from ...models.audit_log import AuditLog
+    from sqlalchemy import desc, or_
+
+    query = db.query(AuditLog)
+
+    # Apply filters
+    if action:
+        query = query.filter(AuditLog.action == action)
+    if actor_type:
+        query = query.filter(AuditLog.actor_type == actor_type)
+    if search:
+        query = query.filter(
+            or_(
+                AuditLog.actor_username.ilike(f"%{search}%"),
+                AuditLog.target_name.ilike(f"%{search}%")
+            )
+        )
+    if start_date:
+        query = query.filter(AuditLog.created_at >= start_date)
+    if end_date:
+        query = query.filter(AuditLog.created_at <= end_date)
+
+    # Get total count
+    total = query.count()
+
+    # Calculate pagination
+    skip = (page - 1) * per_page
+    pages = (total + per_page - 1) // per_page if per_page > 0 else 1
+
+    # Get paginated results
+    logs = query.order_by(desc(AuditLog.created_at)).offset(skip).limit(per_page).all()
+
+    return {
+        "items": logs,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": pages
+    }
+
+
+@router.get("/audit-logs/actions")
+async def get_audit_log_actions(
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Get distinct audit log actions for filtering"""
+    from ...models.audit_log import AuditLog
+
+    actions = db.query(AuditLog.action).distinct().all()
+    return [action[0] for action in actions]

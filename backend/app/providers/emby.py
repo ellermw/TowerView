@@ -1,6 +1,9 @@
 import httpx
+import logging
 from typing import List, Dict, Any, Optional
 from .base import BaseProvider
+
+logger = logging.getLogger(__name__)
 
 
 class EmbyProvider(BaseProvider):
@@ -168,6 +171,50 @@ class EmbyProvider(BaseProvider):
 
                     print(f"Emby session bandwidth calculation: {session_bitrate} -> {session_bandwidth_kbps} kbps")
 
+                    # Determine if this is transcoding and if it's hardware accelerated
+                    play_method = play_state.get("PlayMethod", "").lower()
+                    is_transcoding = play_method == "transcode"
+                    is_hw_transcode = False
+                    hw_decode_title = None
+                    hw_encode_title = None
+
+                    # Check TranscodingInfo for hardware acceleration indicators
+                    transcoding_info = session.get("TranscodingInfo", {})
+                    if is_transcoding and transcoding_info:
+                        video_codec = transcoding_info.get("VideoCodec", "").lower()
+
+                        # Log what we're getting for debugging
+                        print(f"Emby TranscodingInfo - VideoCodec: '{transcoding_info.get('VideoCodec')}', IsVideoDirect: {transcoding_info.get('IsVideoDirect')}, Full info: {transcoding_info}")
+
+                        # Common hardware codec suffixes and indicators
+                        hw_codecs = ["_vaapi", "_qsv", "_nvenc", "_videotoolbox", "_v4l2m2m", "_amf", "h264_vaapi", "h264_qsv", "h264_nvenc", "hevc_vaapi", "hevc_qsv", "hevc_nvenc"]
+
+                        # Check if the video codec indicates hardware acceleration
+                        for hw_suffix in hw_codecs:
+                            if hw_suffix in video_codec:
+                                is_hw_transcode = True
+                                # Extract the hardware type
+                                if "vaapi" in video_codec:
+                                    hw_decode_title = "VA-API"
+                                    hw_encode_title = "VA-API"
+                                elif "qsv" in video_codec:
+                                    hw_decode_title = "QuickSync"
+                                    hw_encode_title = "QuickSync"
+                                elif "nvenc" in video_codec or "nvdec" in video_codec:
+                                    hw_decode_title = "NVDEC"
+                                    hw_encode_title = "NVENC"
+                                elif "videotoolbox" in video_codec:
+                                    hw_decode_title = "VideoToolbox"
+                                    hw_encode_title = "VideoToolbox"
+                                elif "amf" in video_codec:
+                                    hw_decode_title = "AMF"
+                                    hw_encode_title = "AMF"
+                                break
+
+                        # Also check if IsVideoDirect is false (indicates transcoding)
+                        if transcoding_info.get("IsVideoDirect") == False:
+                            is_transcoding = True
+
                     # Build session data with stable identifier
                     emby_session_id = session.get("Id")
                     session_data = {
@@ -195,14 +242,22 @@ class EmbyProvider(BaseProvider):
                         "library_section": "Unknown Library",  # Emby doesn't provide this in session data
 
                         # Streaming details
-                        "video_decision": play_state.get("PlayMethod", "unknown").lower(),
+                        "video_decision": "transcode" if is_transcoding else play_method,
                         "original_resolution": get_resolution(),
                         "original_bitrate": str(video_stream.get("BitRate", 0) // 1000) if video_stream.get("BitRate") else "0",
                         "stream_bitrate": str(session_bandwidth_kbps),
-                        "video_codec": video_stream.get("Codec", "Unknown"),
-                        "audio_codec": audio_stream.get("Codec", "Unknown"),
-                        "container": item.get("Container", "Unknown"),
+                        "video_codec": transcoding_info.get("VideoCodec", video_stream.get("Codec", "Unknown")) if transcoding_info else video_stream.get("Codec", "Unknown"),
+                        "audio_codec": transcoding_info.get("AudioCodec", audio_stream.get("Codec", "Unknown")) if transcoding_info else audio_stream.get("Codec", "Unknown"),
+                        "container": transcoding_info.get("Container", item.get("Container", "Unknown")) if transcoding_info else item.get("Container", "Unknown"),
                         "session_bandwidth": str(session_bandwidth_kbps),
+
+                        # Hardware transcoding info (for compatibility with Plex fields)
+                        "transcode_hw_requested": is_hw_transcode,
+                        "transcode_hw_decode": is_hw_transcode,
+                        "transcode_hw_encode": is_hw_transcode,
+                        "transcode_hw_full_pipeline": is_hw_transcode,
+                        "transcode_hw_decode_title": hw_decode_title,
+                        "transcode_hw_encode_title": hw_encode_title,
 
                         # Quality profile for UI display
                         "quality_profile": get_resolution(),
@@ -245,6 +300,96 @@ class EmbyProvider(BaseProvider):
 
         except Exception:
             return []
+
+    async def get_version_info(self) -> Dict[str, Any]:
+        """Get Emby server version information"""
+        try:
+            async with httpx.AsyncClient() as client:
+                # Get server info
+                response = await client.get(
+                    f"{self.base_url}/System/Info",
+                    headers={"X-Emby-Token": self.api_key},
+                    timeout=10.0
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+
+                    # Get latest version from Docker Hub
+                    latest_version = await self._get_latest_version(client)
+
+                    current_version = data.get("Version", "Unknown")
+
+                    return {
+                        "current_version": current_version,
+                        "server_name": data.get("ServerName", "Emby Server"),
+                        "operating_system": data.get("OperatingSystem", "Unknown"),
+                        "architecture": data.get("SystemArchitecture", "Unknown"),
+                        "product": "Emby Server",
+                        "latest_version": latest_version,
+                        "update_available": self._compare_versions(current_version, latest_version) if latest_version else False,
+                        "has_update_available": data.get("HasUpdateAvailable", False)  # Emby's own update check
+                    }
+
+                return {}
+
+        except Exception as e:
+            logger.error(f"Error getting Emby version info: {e}")
+            return {}
+
+    async def _get_latest_version(self, client: httpx.AsyncClient) -> Optional[str]:
+        """Get the latest Emby version from Docker Hub"""
+        try:
+            response = await client.get(
+                "https://hub.docker.com/v2/repositories/emby/embyserver/tags?page_size=20",
+                timeout=10.0
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                tags = data.get("results", [])
+
+                # Filter for stable version tags (format: X.Y.Z.X)
+                import re
+                version_pattern = re.compile(r'^(\d+)\.(\d+)\.(\d+)\.(\d+)$')
+
+                versions = []
+                for tag in tags:
+                    tag_name = tag.get("name", "")
+                    match = version_pattern.match(tag_name)
+                    if match:
+                        versions.append(tag_name)
+
+                # Sort versions and return the latest
+                if versions:
+                    versions.sort(key=lambda v: [int(x) for x in v.split('.')], reverse=True)
+                    return versions[0]
+
+            return None
+
+        except Exception:
+            # Docker Hub API error
+            return None
+
+    def _compare_versions(self, current: str, latest: str) -> bool:
+        """Compare version strings to determine if update is available"""
+        try:
+            # Parse version strings (e.g., "4.7.14.0")
+            current_parts = current.split(".")
+            latest_parts = latest.split(".")
+
+            for i in range(min(len(current_parts), len(latest_parts))):
+                curr_num = int(current_parts[i])
+                latest_num = int(latest_parts[i])
+
+                if latest_num > curr_num:
+                    return True
+                elif latest_num < curr_num:
+                    return False
+
+            return False
+        except:
+            return False
 
     async def list_users(self) -> List[Dict[str, Any]]:
         """Get all Emby users"""

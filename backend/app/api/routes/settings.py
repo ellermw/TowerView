@@ -1,14 +1,15 @@
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from ...core.database import get_db
-from ...core.security import get_current_admin_user
+from ...core.security import get_current_admin_user, get_current_admin_or_local_user
 from ...models.user import User
 from ...models.settings import NetdataIntegration, SystemSettings, PortainerIntegration
 from ...services.netdata_cloud_service import NetdataCloudService
 from ...services.portainer_service import PortainerService
+from ...services.audit_service import AuditService
 import asyncio
 import json
 
@@ -485,10 +486,25 @@ CACHE_TTL = 1  # 1 second cache to handle rapid requests
 @router.get("/portainer/metrics/{server_id}")
 async def get_portainer_metrics(
     server_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_or_local_user),
     db: Session = Depends(get_db)
 ):
     """Get real-time container metrics from Portainer with caching"""
+    from ...models.user import UserType
+    from ...models.user_permission import UserPermission
+
+    # Check permissions for local users
+    if current_user.type == UserType.local_user:
+        permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.server_id == server_id
+        ).first()
+        if not permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No permission to view this server"
+            )
+
     # Check cache first
     cache_key = f"{current_user.id}_{server_id}"
     if cache_key in metrics_cache:
@@ -496,7 +512,8 @@ async def get_portainer_metrics(
         if time() - timestamp < CACHE_TTL:
             return cached_data
 
-    integration = db.query(PortainerIntegration).filter_by(created_by_id=current_user.id).first()
+    # Get the Portainer integration (there's only one global integration)
+    integration = db.query(PortainerIntegration).filter_by(enabled=True).first()
 
     if not integration or not integration.api_token:
         raise HTTPException(
@@ -562,11 +579,30 @@ async def get_portainer_metrics(
 async def container_action(
     server_id: int,
     action: str,
-    current_user: User = Depends(get_current_admin_user),
+    request: Request,
+    current_user: User = Depends(get_current_admin_or_local_user),
     db: Session = Depends(get_db)
 ):
     """Perform an action on a server's container (start, stop, restart)"""
-    integration = db.query(PortainerIntegration).filter_by(created_by_id=current_user.id).first()
+    from ...models.user import UserType
+    from ...models.user_permission import UserPermission
+
+    # Check permissions for local users
+    if current_user.type == UserType.local_user:
+        permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.server_id == server_id,
+            UserPermission.can_manage_server == True
+        ).first()
+
+        if not permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No permission to manage this server"
+            )
+
+    # Get the global Portainer integration (not user-specific anymore)
+    integration = db.query(PortainerIntegration).filter_by(enabled=True).first()
 
     if not integration or not integration.api_token:
         raise HTTPException(
@@ -597,17 +633,45 @@ async def container_action(
                 detail=result.get("message", "Action failed")
             )
 
+        # Get server info for audit log
+        from ...models.server import Server
+        server = db.query(Server).filter(Server.id == server_id).first()
+        server_name = server.name if server else f"Server {server_id}"
+        container_name = server_mapping.get("container_name", container_id)
+
+        # Log container action
+        AuditService.log_container_action(
+            db, current_user, action, server_id, server_name, container_name, request
+        )
+
         return result
 
 
 @router.get("/portainer/container/{server_id}/info")
 async def get_container_info(
     server_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_or_local_user),
     db: Session = Depends(get_db)
 ):
     """Get detailed information about a server's container"""
-    integration = db.query(PortainerIntegration).filter_by(created_by_id=current_user.id).first()
+    from ...models.user import UserType
+    from ...models.user_permission import UserPermission
+
+    # Check permissions for local users - need manage permission for container info
+    if current_user.type == UserType.local_user:
+        permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.server_id == server_id,
+            UserPermission.can_manage_server == True
+        ).first()
+        if not permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No permission to manage this server"
+            )
+
+    # Get the global Portainer integration
+    integration = db.query(PortainerIntegration).filter_by(enabled=True).first()
 
     if not integration or not integration.api_token:
         raise HTTPException(
@@ -634,6 +698,234 @@ async def get_container_info(
             "container_name": server_mapping.get("container_name"),
             **info
         }
+
+
+@router.post("/portainer/container/{server_id}/start")
+async def start_container(
+    server_id: int,
+    current_user: User = Depends(get_current_admin_or_local_user),
+    db: Session = Depends(get_db)
+):
+    """Start a Docker container for a server"""
+    from ...models.user import UserType
+    from ...models.user_permission import UserPermission
+    from ...models.server import Server
+
+    # Check permissions for local users
+    if current_user.type == UserType.local_user:
+        permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.server_id == server_id
+        ).first()
+
+        if not permission or not permission.can_manage_server:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No permission to manage this server"
+            )
+
+    # Get the global Portainer integration (not user-specific)
+    integration = db.query(PortainerIntegration).filter_by(enabled=True).first()
+
+    if not integration or not integration.api_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Portainer integration not configured"
+        )
+
+    # Get container mapping for this server
+    mappings = integration.container_mappings or {}
+    server_mapping = mappings.get(str(server_id))
+
+    if not server_mapping:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No container mapped for this server"
+        )
+
+    container_id = server_mapping.get("container_id")
+
+    async with PortainerService(db) as service:
+        result = await service.start_container(
+            integration.url, integration.api_token, container_id, integration.endpoint_id
+        )
+
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.get("message", "Failed to start container")
+            )
+
+        return result
+
+
+@router.post("/portainer/container/{server_id}/stop")
+async def stop_container(
+    server_id: int,
+    current_user: User = Depends(get_current_admin_or_local_user),
+    db: Session = Depends(get_db)
+):
+    """Stop a Docker container for a server"""
+    from ...models.user import UserType
+    from ...models.user_permission import UserPermission
+
+    # Check permissions for local users
+    if current_user.type == UserType.local_user:
+        permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.server_id == server_id
+        ).first()
+
+        if not permission or not permission.can_manage_server:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No permission to manage this server"
+            )
+
+    # Get the global Portainer integration
+    integration = db.query(PortainerIntegration).filter_by(enabled=True).first()
+
+    if not integration or not integration.api_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Portainer integration not configured"
+        )
+
+    # Get container mapping for this server
+    mappings = integration.container_mappings or {}
+    server_mapping = mappings.get(str(server_id))
+
+    if not server_mapping:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No container mapped for this server"
+        )
+
+    container_id = server_mapping.get("container_id")
+
+    async with PortainerService(db) as service:
+        result = await service.stop_container(
+            integration.url, integration.api_token, container_id, integration.endpoint_id
+        )
+
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.get("message", "Failed to stop container")
+            )
+
+        return result
+
+
+@router.post("/portainer/container/{server_id}/update")
+async def update_container(
+    server_id: int,
+    current_user: User = Depends(get_current_admin_user),  # Admin only for updates
+    db: Session = Depends(get_db)
+):
+    """Update a Docker container by recreating it with latest image"""
+    from ...models.server import Server
+
+    # Get the global Portainer integration
+    integration = db.query(PortainerIntegration).filter_by(enabled=True).first()
+
+    if not integration or not integration.api_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Portainer integration not configured"
+        )
+
+    # Get container mapping for this server
+    mappings = integration.container_mappings or {}
+    server_mapping = mappings.get(str(server_id))
+
+    if not server_mapping:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No container mapped for this server"
+        )
+
+    container_id = server_mapping.get("container_id")
+
+    async with PortainerService(db) as service:
+        result = await service.recreate_container(
+            integration.url, integration.api_token, container_id, integration.endpoint_id
+        )
+
+        if result.get("success"):
+            # Update the container mapping with new container ID
+            new_container_id = result.get("new_container_id")
+            if new_container_id:
+                # Update the container ID in the mapping
+                mappings[str(server_id)]["container_id"] = new_container_id[:12]  # Store short ID
+                integration.container_mappings = mappings
+                db.commit()
+
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.get("message", "Failed to update container")
+            )
+
+        return result
+
+
+@router.post("/portainer/container/{server_id}/restart")
+async def restart_container(
+    server_id: int,
+    current_user: User = Depends(get_current_admin_or_local_user),
+    db: Session = Depends(get_db)
+):
+    """Restart a Docker container for a server"""
+    from ...models.user import UserType
+    from ...models.user_permission import UserPermission
+
+    # Check permissions for local users
+    if current_user.type == UserType.local_user:
+        permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.server_id == server_id
+        ).first()
+
+        if not permission or not permission.can_manage_server:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No permission to manage this server"
+            )
+
+    # Get the global Portainer integration
+    integration = db.query(PortainerIntegration).filter_by(enabled=True).first()
+
+    if not integration or not integration.api_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Portainer integration not configured"
+        )
+
+    # Get container mapping for this server
+    mappings = integration.container_mappings or {}
+    server_mapping = mappings.get(str(server_id))
+
+    if not server_mapping:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No container mapped for this server"
+        )
+
+    container_id = server_mapping.get("container_id")
+
+    async with PortainerService(db) as service:
+        result = await service.restart_container(
+            integration.url, integration.api_token, container_id, integration.endpoint_id
+        )
+
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.get("message", "Failed to restart container")
+            )
+
+        return result
 
 
 @router.delete("/portainer/disconnect")

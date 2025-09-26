@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useAuthStore } from '../store/authStore'
 import api from '../services/api'
 
@@ -45,23 +45,43 @@ export function usePermissions() {
         return
       }
 
-      // Local users need to fetch their permissions
+      // Local users have permissions based on their server permissions
       if (user.type === 'local_user') {
         try {
+          // Get user's specific permissions
           const response = await api.get(`/admin/local-users/${user.id}/permissions`)
-          const userPerms: UserPermissions = {}
+          const serverPermissions = response.data || []
 
-          // Convert array of permissions to object
-          if (response.data && Array.isArray(response.data)) {
-            response.data.forEach((perm: string) => {
-              userPerms[perm] = true
-            })
+          // Check if user has any permissions at all
+          const hasAnyPermission = serverPermissions.length > 0
+          const canViewUsers = serverPermissions.some((p: any) => p.can_view_users)
+          const canManageServers = serverPermissions.some((p: any) => p.can_manage_server)
+
+          const userPerms: UserPermissions = {
+            view_analytics: hasAnyPermission,  // Can view dashboard if has any permission
+            view_sessions: hasAnyPermission,    // Can view sessions if has any permission
+            terminate_sessions: canManageServers, // Can terminate if can manage servers
+            view_users: canViewUsers,           // Can view users based on permission
+            manage_users: false,                // Local users can't manage users
+            manage_servers: canManageServers,   // Can manage servers based on permission
+            view_audit_logs: false,             // Only admin users can view audit logs
+            manage_settings: false,             // Local users can't manage settings
           }
 
           setPermissions(userPerms)
         } catch (error) {
           console.error('Error fetching permissions:', error)
-          setPermissions({})
+          // Set minimal permissions for dashboard access
+          setPermissions({
+            view_analytics: true,  // Always show dashboard
+            view_sessions: true,   // Always allow viewing sessions
+            view_users: false,
+            terminate_sessions: false,
+            manage_users: false,
+            manage_servers: false,
+            view_audit_logs: false,
+            manage_settings: false,
+          })
         }
         setLoading(false)
         return
@@ -75,17 +95,17 @@ export function usePermissions() {
     fetchPermissions()
   }, [user])
 
-  const hasPermission = (permission: Permission): boolean => {
+  const hasPermission = useCallback((permission: Permission): boolean => {
     return permissions[permission] || false
-  }
+  }, [permissions])
 
-  const hasAnyPermission = (...perms: Permission[]): boolean => {
+  const hasAnyPermission = useCallback((...perms: Permission[]): boolean => {
     return perms.some(perm => permissions[perm])
-  }
+  }, [permissions])
 
-  const hasAllPermissions = (...perms: Permission[]): boolean => {
+  const hasAllPermissions = useCallback((...perms: Permission[]): boolean => {
     return perms.every(perm => permissions[perm])
-  }
+  }, [permissions])
 
   return {
     permissions,

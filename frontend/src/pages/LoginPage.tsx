@@ -47,10 +47,11 @@ export default function LoginPage() {
       onSuccess: (data) => {
         // Check if password change is required
         if (data.must_change_password) {
-          // Store auth data temporarily
+          // Store auth data temporarily - decode token to get actual user ID
+          const tokenPayload = JSON.parse(atob(data.access_token.split('.')[1]))
           setTempAuthData({
             user: {
-              id: 1, // This would come from the token or separate API call
+              id: parseInt(tokenPayload.sub),
               username: formData.username,
               type: loginType,
             },
@@ -63,9 +64,10 @@ export default function LoginPage() {
           setShowChangePassword(true)
           toast('You must change your password before continuing', { icon: '⚠️' })
         } else {
-          // Normal login flow
+          // Normal login flow - decode token to get actual user ID
+          const tokenPayload = JSON.parse(atob(data.access_token.split('.')[1]))
           const user = {
-            id: 1, // This would come from the token or separate API call
+            id: parseInt(tokenPayload.sub),
             username: formData.username,
             type: loginType === 'local' ? 'local_user' as const : 'admin' as const,
           }

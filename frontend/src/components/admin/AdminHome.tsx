@@ -192,7 +192,7 @@ interface GPUStatus {
 }
 
 export default function AdminHome() {
-  const { hasPermission, isAdmin, isLocalUser } = usePermissions()
+  const { hasPermission, isAdmin } = usePermissions()
 
   // Bandwidth tracking state for the graph
   const [bandwidthHistory, setBandwidthHistory] = React.useState<BandwidthDataPoint[]>([])
@@ -208,7 +208,7 @@ export default function AdminHome() {
     'admin-sessions',
     () => api.get('/admin/sessions').then(res => res.data),
     {
-      refetchInterval: 30000, // 30-second refresh to avoid rate limiting
+      refetchInterval: 2000, // 2-second refresh for live updates
       refetchOnWindowFocus: false,
       onError: (error) => {
         console.error('Failed to fetch sessions:', error)
@@ -227,11 +227,11 @@ export default function AdminHome() {
   )
 
   // Get analytics data with filters
-  const { data: analytics, isLoading: analyticsLoading, error: analyticsError } = useQuery<DashboardAnalytics>(
+  const { data: analytics, isLoading: analyticsLoading } = useQuery<DashboardAnalytics>(
     ['dashboard-analytics', analyticsFilters],
     () => api.post('/admin/analytics', analyticsFilters).then(res => res.data),
     {
-      refetchInterval: 30000, // Refresh every 30 seconds
+      refetchInterval: 5000, // Refresh every 5 seconds
       refetchOnWindowFocus: false,
       onError: (error) => {
         console.error('Failed to fetch analytics:', error)
@@ -245,7 +245,7 @@ export default function AdminHome() {
     'gpu-status',
     () => api.get('/admin/gpu-status').then(res => res.data).catch(() => null),
     {
-      refetchInterval: 30000, // Refresh every 30 seconds
+      refetchInterval: 5000, // Refresh every 5 seconds
       refetchOnWindowFocus: false,
       retry: false, // Don't retry if it fails
       enabled: false, // Disable for now until backend is updated
@@ -278,7 +278,7 @@ export default function AdminHome() {
     sessionsRef.current = sessions || []
   }, [sessions])
 
-  // Track bandwidth data every 15 seconds
+  // Track bandwidth data every 2 seconds
   React.useEffect(() => {
     const trackBandwidth = () => {
       const now = Date.now()
@@ -324,9 +324,9 @@ export default function AdminHome() {
       })
     }
 
-    // Track immediately, then every 15 seconds
+    // Track immediately, then every 2 seconds
     trackBandwidth()
-    const interval = setInterval(trackBandwidth, 15000)
+    const interval = setInterval(trackBandwidth, 2000)
 
     return () => clearInterval(interval)
   }, []) // Empty dependency array - only run once
@@ -756,7 +756,7 @@ export default function AdminHome() {
   }
 
   return (
-    <div className="px-4 py-6 sm:px-6">
+    <div className="px-4 py-6 sm:px-6 min-h-screen">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
           Admin Dashboard
@@ -767,7 +767,7 @@ export default function AdminHome() {
       </div>
 
       {/* Active Sessions Section */}
-      {(isAdmin || hasPermission('view_sessions')) && (
+      {(isAdmin || hasPermission('view_sessions')) ? (
         <div className="mb-8">
         <div className="flex items-center gap-2 mb-4">
           <SignalIcon className="w-5 h-5 text-green-500" />
@@ -789,7 +789,7 @@ export default function AdminHome() {
 
         {/* GPU Status */}
         {gpuStatus && gpuStatus.total_transcodes > 0 && (
-          <div className="mb-6">
+          <div className="mb-6 min-h-[200px]">
             <div className="flex items-center gap-2 mb-2">
               <CpuChipIcon className="w-4 h-4 text-purple-500" />
               <h3 className="text-sm font-medium text-slate-900 dark:text-white">
@@ -1223,12 +1223,12 @@ export default function AdminHome() {
           </div>
         )}
       </div>
-      )}
+      ) : null}
 
       {/* Analytics Section */}
-      {(isAdmin || hasPermission('view_analytics')) && (
+      {(isAdmin || hasPermission('view_analytics')) ? (
         <div>
-        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <ChartBarIcon className="w-5 h-5 text-blue-500" />
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
@@ -1438,7 +1438,7 @@ export default function AdminHome() {
           </div>
         )}
       </div>
-      )}
+      ) : null}
     </div>
   )
 }

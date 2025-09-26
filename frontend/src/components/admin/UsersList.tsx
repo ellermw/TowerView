@@ -45,7 +45,11 @@ export default function UsersList() {
     () => api.get('/admin/users').then(res => res.data),
     {
       refetchInterval: refreshInterval,
-      refetchIntervalInBackground: true
+      refetchIntervalInBackground: true,
+      onError: (error: any) => {
+        console.error('Failed to fetch users:', error)
+        console.error('Error details:', error.response?.data)
+      }
     }
   )
 
@@ -128,10 +132,12 @@ export default function UsersList() {
   }
 
   if (error) {
+    const errorMessage = (error as any)?.response?.data?.detail || 'Failed to load users'
     return (
       <div className="px-4 py-6 sm:px-6">
         <div className="text-center py-8">
-          <div className="text-red-600 dark:text-red-400">Failed to load users</div>
+          <div className="text-red-600 dark:text-red-400">{errorMessage}</div>
+          <div className="text-sm text-slate-500 mt-2">Check console for details</div>
         </div>
       </div>
     )

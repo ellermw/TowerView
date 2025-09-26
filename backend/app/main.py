@@ -12,6 +12,7 @@ from .api.routes import auth, admin
 from .api.routes import settings as settings_router
 from .services.auth_service import AuthService
 from .services.metrics_cache_service import metrics_cache
+from .services.bandwidth_cache import start_bandwidth_tracking, stop_bandwidth_tracking
 
 # Configure logging
 logging.basicConfig(
@@ -35,11 +36,18 @@ async def lifespan(app: FastAPI):
     await metrics_cache.start()
     logging.info("Started background metrics collection service")
 
+    # Start bandwidth tracking
+    await start_bandwidth_tracking(db)
+    logging.info("Started bandwidth tracking service")
+
     yield
 
-    # Stop background metrics collection on shutdown
+    # Stop background services on shutdown
     await metrics_cache.stop()
     logging.info("Stopped background metrics collection service")
+
+    stop_bandwidth_tracking()
+    logging.info("Stopped bandwidth tracking service")
 
 app = FastAPI(
     title="Towerview",
