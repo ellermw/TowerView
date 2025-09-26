@@ -7,19 +7,9 @@ dev:
 dev-detached:
 	docker-compose up -d --build
 
-# Production commands
-prod:
-	docker-compose -f docker-compose.prod.yml up -d --build
-
-prod-logs:
-	docker-compose -f docker-compose.prod.yml logs -f
-
 # Build commands
 build:
 	docker-compose build
-
-build-prod:
-	docker-compose -f docker-compose.prod.yml build
 
 # Database commands
 db-migrate:
