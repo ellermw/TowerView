@@ -449,7 +449,8 @@ async def get_gpu_status(
                 if session.get("video_decision") == "transcode":
                     is_hw = (
                         session.get("transcode_hw_full_pipeline") or
-                        (session.get("transcode_hw_decode") and session.get("transcode_hw_encode"))
+                        (session.get("transcode_hw_decode") and session.get("transcode_hw_encode")) or
+                        (session.get("transcode_hw_decode_title") and session.get("transcode_hw_encode_title"))
                     )
 
                     if is_hw:

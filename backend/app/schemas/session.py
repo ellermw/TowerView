@@ -71,3 +71,13 @@ class LiveSessionResponse(BaseModel):
     container: Optional[str] = None
     session_bandwidth: Optional[str] = None
     quality_profile: Optional[str] = None
+
+    # Hardware transcoding fields (Plex)
+    transcode_hw_requested: Optional[bool] = None
+    transcode_hw_full_pipeline: Optional[bool] = None
+    transcode_hw_decode: Optional[bool] = None
+    transcode_hw_encode: Optional[bool] = None
+    transcode_hw_decode_title: Optional[str] = None
+    transcode_hw_encode_title: Optional[str] = None
+    transcode_speed: Optional[float] = None
+    transcode_throttled: Optional[bool] = None
