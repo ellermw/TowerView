@@ -322,7 +322,8 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 - **Plex Enhancement**: Added direct username/password option alongside OAuth
 - **Emby/Jellyfin Fix**: Corrected authentication headers and methods
 - **Smart Server Selection**: Automatically matches users to correct servers
-- **Improved Error Handling**: Better logging and error messages
+- **Session Expired Loop Fix**: Authentication failures no longer trigger session expiration
+- **Improved Error Handling**: Clear error messages for invalid credentials
 
 ### Version 2.2.1
 - **Authentication System Update**: Temporarily disabled media user authentication
