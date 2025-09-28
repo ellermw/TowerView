@@ -1,7 +1,7 @@
 import { Fragment, useState, useEffect } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { Disclosure, Menu, Transition } from '@headlessui/react'
-import { Bars3Icon, XMarkIcon, UserIcon, KeyIcon } from '@heroicons/react/24/outline'
+import { Bars3Icon, XMarkIcon, UserIcon, KeyIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
 import { useAuthStore } from '../store/authStore'
 import { classNames } from '../utils/classNames'
 import ChangePasswordModal from './ChangePasswordModal'
@@ -17,7 +17,7 @@ export default function Layout({ children }: LayoutProps) {
   const { user, logout } = useAuthStore()
   const location = useLocation()
   const [showChangePassword, setShowChangePassword] = useState(false)
-  const { hasPermission, isAdmin, isLocalUser } = usePermissions()
+  const { hasPermission, isAdmin, isLocalUser, isMediaUser } = usePermissions()
   const [navigation, setNavigation] = useState<Array<{ name: string; href: string }>>([])
 
   // Fetch site settings
@@ -41,30 +41,39 @@ export default function Layout({ children }: LayoutProps) {
     return location.pathname.startsWith(href)
   }
 
+  // Build management menu items
+  const [managementItems, setManagementItems] = useState<Array<{ name: string; href: string }>>([])
+
   // Build navigation based on user type and permissions
   useEffect(() => {
     const nav = []
+    const management = []
 
-    if (isAdmin || isLocalUser) {
-      // Dashboard is always visible
-      nav.push({ name: 'Dashboard', href: '/admin' })
+    // Dashboard is always visible for authenticated users
+    nav.push({ name: 'Dashboard', href: '/admin' })
 
+    // Media users only see dashboard - no management items
+    if (isMediaUser) {
+      // Media users don't get any management menu items
+      // They can only see the dashboard
+    } else if (isAdmin || isLocalUser) {
+      // Management menu items for admin and staff/support users
       // Servers - visible to all but functionality limited by manage_servers permission
-      nav.push({ name: 'Servers', href: '/admin/servers' })
+      management.push({ name: 'Servers', href: '/admin/servers' })
 
       // Sessions - requires view_sessions permission
       if (isAdmin || hasPermission('view_sessions')) {
-        nav.push({ name: 'Sessions', href: '/admin/sessions' })
+        management.push({ name: 'Sessions', href: '/admin/sessions' })
       }
 
       // Users - requires view_users permission
       if (isAdmin || hasPermission('view_users')) {
-        nav.push({ name: 'Users', href: '/admin/users' })
+        management.push({ name: 'Users', href: '/admin/users' })
       }
 
-      // Local Users - admin only or if user can manage users
+      // System Users (formerly Local Users) - admin only or if user can manage users
       if (isAdmin || hasPermission('manage_users')) {
-        nav.push({ name: 'Local Users', href: '/admin/local-users' })
+        management.push({ name: 'System Users', href: '/admin/local-users' })
       }
 
       // Audit Logs - requires view_audit_logs permission
@@ -79,7 +88,8 @@ export default function Layout({ children }: LayoutProps) {
     }
 
     setNavigation(nav)
-  }, [isAdmin, isLocalUser, hasPermission])
+    setManagementItems(management)
+  }, [isAdmin, isLocalUser, isMediaUser, hasPermission])
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
@@ -95,7 +105,68 @@ export default function Layout({ children }: LayoutProps) {
                     </h1>
                   </div>
                   <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                    {navigation.map((item) => (
+                    {/* Dashboard link */}
+                    {navigation.filter(item => item.name === 'Dashboard').map((item) => (
+                      <Link
+                        key={item.name}
+                        to={item.href}
+                        className={classNames(
+                          isCurrentPath(item.href)
+                            ? 'border-primary-500 text-slate-900 dark:text-white'
+                            : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-300 dark:hover:text-white',
+                          'inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium'
+                        )}
+                      >
+                        {item.name}
+                      </Link>
+                    ))}
+
+                    {/* Management Dropdown - now after Dashboard */}
+                    {managementItems.length > 0 && (
+                      <Menu as="div" className="relative inline-flex">
+                        <Menu.Button className={classNames(
+                          managementItems.some(item => isCurrentPath(item.href))
+                            ? 'border-primary-500 text-slate-900 dark:text-white'
+                            : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-300 dark:hover:text-white',
+                          'inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium h-full'
+                        )}>
+                          Management
+                          <ChevronDownIcon className="ml-1 h-4 w-4" />
+                        </Menu.Button>
+
+                        <Transition
+                          as={Fragment}
+                          enter="transition ease-out duration-100"
+                          enterFrom="transform opacity-0 scale-95"
+                          enterTo="transform opacity-100 scale-100"
+                          leave="transition ease-in duration-75"
+                          leaveFrom="transform opacity-100 scale-100"
+                          leaveTo="transform opacity-0 scale-95"
+                        >
+                          <Menu.Items className="absolute left-0 top-full mt-2 w-48 origin-top-left rounded-md bg-white dark:bg-slate-800 py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50">
+                            {managementItems.map((item) => (
+                              <Menu.Item key={item.name}>
+                                {({ active }) => (
+                                  <Link
+                                    to={item.href}
+                                    className={classNames(
+                                      active ? 'bg-slate-100 dark:bg-slate-700' : '',
+                                      isCurrentPath(item.href) ? 'text-indigo-600 dark:text-indigo-400 font-semibold' : 'text-slate-700 dark:text-slate-300',
+                                      'block px-4 py-2 text-sm'
+                                    )}
+                                  >
+                                    {item.name}
+                                  </Link>
+                                )}
+                              </Menu.Item>
+                            ))}
+                          </Menu.Items>
+                        </Transition>
+                      </Menu>
+                    )}
+
+                    {/* Other navigation items (Audit Logs, Settings) */}
+                    {navigation.filter(item => item.name !== 'Dashboard').map((item) => (
                       <Link
                         key={item.name}
                         to={item.href}
@@ -185,7 +256,49 @@ export default function Layout({ children }: LayoutProps) {
 
             <Disclosure.Panel className="sm:hidden">
               <div className="pt-2 pb-3 space-y-1">
-                {navigation.map((item) => (
+                {/* Dashboard first */}
+                {navigation.filter(item => item.name === 'Dashboard').map((item) => (
+                  <Disclosure.Button
+                    key={item.name}
+                    as={Link}
+                    to={item.href}
+                    className={classNames(
+                      isCurrentPath(item.href)
+                        ? 'bg-primary-50 border-primary-500 text-primary-700 dark:bg-slate-700 dark:text-white'
+                        : 'border-transparent text-slate-600 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-700',
+                      'block pl-3 pr-4 py-2 border-l-4 text-base font-medium'
+                    )}
+                  >
+                    {item.name}
+                  </Disclosure.Button>
+                ))}
+
+                {/* Management section for mobile */}
+                {managementItems.length > 0 && (
+                  <>
+                    <div className="px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Management
+                    </div>
+                    {managementItems.map((item) => (
+                      <Disclosure.Button
+                        key={item.name}
+                        as={Link}
+                        to={item.href}
+                        className={classNames(
+                          isCurrentPath(item.href)
+                            ? 'bg-primary-50 border-primary-500 text-primary-700 dark:bg-slate-700 dark:text-white'
+                            : 'border-transparent text-slate-600 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-700',
+                          'block pl-6 pr-4 py-2 border-l-4 text-base font-medium'
+                        )}
+                      >
+                        {item.name}
+                      </Disclosure.Button>
+                    ))}
+                  </>
+                )}
+
+                {/* Other navigation items (Audit Logs, Settings) */}
+                {navigation.filter(item => item.name !== 'Dashboard').map((item) => (
                   <Disclosure.Button
                     key={item.name}
                     as={Link}

@@ -17,11 +17,13 @@ class AuthService:
         self.user_service = UserService(db)
 
     async def authenticate_admin(self, login_data: AdminLoginRequest) -> Optional[User]:
+        """Authenticate system users (admin, staff, support) - renamed for backward compatibility"""
         # Make username case-insensitive for consistency
         from sqlalchemy import func
+        # Check for any system user type (admin, staff, support, or legacy local_user)
         user = self.db.query(User).filter(
             func.lower(User.username) == login_data.username.lower(),
-            User.type == UserType.admin
+            User.type.in_([UserType.admin, UserType.staff, UserType.support, UserType.local_user])
         ).first()
 
         if not user or not verify_password(login_data.password, user.password_hash):

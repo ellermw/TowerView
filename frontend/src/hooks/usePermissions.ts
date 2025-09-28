@@ -45,8 +45,8 @@ export function usePermissions() {
         return
       }
 
-      // Local users have permissions based on their server permissions
-      if (user.type === 'local_user') {
+      // Staff and support users have permissions based on their server permissions
+      if (user.type === 'local_user' || user.type === 'staff' || user.type === 'support') {
         try {
           // Get user's specific permissions
           const response = await api.get(`/admin/local-users/${user.id}/permissions`)
@@ -87,7 +87,23 @@ export function usePermissions() {
         return
       }
 
-      // Media users have no admin permissions
+      // Media users only have limited permissions
+      if (user.type === 'media_user') {
+        setPermissions({
+          view_analytics: true,    // Can view dashboard analytics
+          view_sessions: false,    // Cannot view sessions page
+          terminate_sessions: false,
+          view_users: false,       // Cannot view users page
+          manage_users: false,
+          manage_servers: false,
+          view_audit_logs: false,
+          manage_settings: false,
+        })
+        setLoading(false)
+        return
+      }
+
+      // Default: no permissions
       setPermissions({})
       setLoading(false)
     }
@@ -114,7 +130,9 @@ export function usePermissions() {
     hasAnyPermission,
     hasAllPermissions,
     isAdmin: user?.type === 'admin',
-    isLocalUser: user?.type === 'local_user',
+    isLocalUser: user?.type === 'local_user' || user?.type === 'staff' || user?.type === 'support',
+    isStaff: user?.type === 'staff' || user?.type === 'local_user',
+    isSupport: user?.type === 'support',
     isMediaUser: user?.type === 'media_user',
   }
 }

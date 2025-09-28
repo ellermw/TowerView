@@ -16,6 +16,7 @@ import {
   XMarkIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  ArrowDownTrayIcon,
   CpuChipIcon,
   ComputerDesktopIcon,
   ExclamationTriangleIcon
@@ -23,6 +24,7 @@ import {
 import { Disclosure, Transition } from '@headlessui/react'
 import api from '../../services/api'
 import { usePermissions } from '../../hooks/usePermissions'
+import { useAuthStore } from '../../store/authStore'
 
 interface LiveSession {
   session_id: string
@@ -192,6 +194,7 @@ interface GPUStatus {
 }
 
 export default function AdminHome() {
+  const { user: currentUser } = useAuthStore()
   const { hasPermission, isAdmin } = usePermissions()
 
   // Bandwidth tracking state for the graph
@@ -563,6 +566,25 @@ export default function AdminHome() {
   //   const i = Math.floor(Math.log(bytes) / Math.log(k))
   //   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
   // }
+
+  const formatBandwidth = (bandwidth: number) => {
+    // Bandwidth is in Kbps
+    if (!bandwidth) return '0 Mbps'
+    if (bandwidth >= 1000000) {
+      return `${(bandwidth / 1000000).toFixed(1)} Gbps`
+    } else if (bandwidth >= 1000) {
+      return `${(bandwidth / 1000).toFixed(1)} Mbps`
+    }
+    return `${bandwidth} Kbps`
+  }
+
+  const maskUsername = (username: string) => {
+    // Only mask usernames for media users
+    if (currentUser?.type === 'media_user' && username) {
+      return username.charAt(0) + '****'
+    }
+    return username
+  }
 
   const formatBitrate = (bitrate: string | number) => {
     if (!bitrate) return '0 Kbps'
@@ -960,6 +982,12 @@ export default function AdminHome() {
                                   {serverTypeStats.transcodes}
                                 </span>
                               </div>
+                              <div className="flex items-center">
+                                <ArrowDownTrayIcon className="h-3 w-3 text-blue-500 mr-1" />
+                                <span className="font-medium text-slate-900 dark:text-white">
+                                  {formatBandwidth(serverTypeStats.totalBandwidth)}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -999,6 +1027,7 @@ export default function AdminHome() {
                                             <div className="flex items-center space-x-3 text-xs">
                                               <span className="font-medium">{serverStats.totalStreams} streams</span>
                                               <span className="font-medium text-orange-500">{serverStats.transcodes} transcoding</span>
+                                              <span className="font-medium text-blue-500">{formatBandwidth(serverStats.totalBandwidth)}</span>
                                             </div>
                                           </div>
                                         </div>
@@ -1045,7 +1074,7 @@ export default function AdminHome() {
                                                 <div className="space-y-2 text-xs text-slate-600 dark:text-slate-400">
                                                   <div className="flex justify-between">
                                                     <span>Username:</span>
-                                                    <span className="font-medium text-slate-900 dark:text-white">{session.username || 'Unknown'}</span>
+                                                    <span className="font-medium text-slate-900 dark:text-white">{maskUsername(session.username || 'Unknown')}</span>
                                                   </div>
                                                   <div className="flex justify-between">
                                                     <span>Device:</span>
@@ -1355,7 +1384,7 @@ export default function AdminHome() {
                   <div className="space-y-2">
                     {analytics.top_users.slice(0, 5).map((user, index) => (
                       <div key={index} className="flex justify-between items-center text-sm">
-                        <span className="text-slate-900 dark:text-white">{user.username}</span>
+                        <span className="text-slate-900 dark:text-white">{maskUsername(user.username)}</span>
                         <div className="text-right">
                           <div className="text-slate-600 dark:text-slate-400">{user.total_plays} plays</div>
                           <div className="text-xs text-slate-500">{Math.round(user.total_watch_time_minutes / 60)}h</div>

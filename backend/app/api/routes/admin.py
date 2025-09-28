@@ -97,6 +97,13 @@ async def list_servers(
     if current_user.type == UserType.admin:
         # Admins see all servers they own
         servers = server_service.get_servers_by_owner(current_user.id)
+    elif current_user.type == UserType.media_user:
+        # Media users only see the server they authenticated with
+        if current_user.server_id:
+            server = server_service.get_server_by_id(current_user.server_id)
+            servers = [server] if server else []
+        else:
+            servers = []
     else:
         # Local users see servers they have permissions for
         permissions = db.query(UserPermission).filter(
@@ -133,6 +140,13 @@ async def get_server(
     # Check access
     if current_user.type == UserType.admin:
         if server.owner_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Server not found"
+            )
+    elif current_user.type == UserType.media_user:
+        # Media users can only access the server they authenticated with
+        if current_user.server_id != server_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Server not found"

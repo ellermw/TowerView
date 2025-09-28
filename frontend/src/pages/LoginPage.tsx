@@ -5,6 +5,7 @@ import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import api from '../services/api'
 import { useAuthStore } from '../store/authStore'
 import ChangePasswordModal from '../components/ChangePasswordModal'
+import MediaLoginModal from '../components/MediaLoginModal'
 
 interface LoginRequest {
   admin_login?: {
@@ -24,16 +25,15 @@ interface LoginRequest {
 }
 
 export default function LoginPage() {
-  const [loginType, setLoginType] = useState<'admin' | 'local'>('admin')
+  const [loginType, setLoginType] = useState<'user' | 'staff'>('user')
   const [showPassword, setShowPassword] = useState(false)
+  const [selectedProvider, setSelectedProvider] = useState<'plex' | 'emby' | 'jellyfin' | null>(null)
 
   const [showChangePassword, setShowChangePassword] = useState(false)
   const [tempAuthData, setTempAuthData] = useState<any>(null)
   const [formData, setFormData] = useState({
     username: '',
     password: '',
-    server_id: '',
-    provider: 'plex',
   })
 
   const { setAuth } = useAuthStore()
@@ -44,35 +44,51 @@ export default function LoginPage() {
       return response.data
     },
     {
-      onSuccess: (data) => {
-        // Check if password change is required
-        if (data.must_change_password) {
-          // Store auth data temporarily - decode token to get actual user ID
-          const tokenPayload = JSON.parse(atob(data.access_token.split('.')[1]))
-          setTempAuthData({
-            user: {
-              id: parseInt(tokenPayload.sub),
-              username: formData.username,
-              type: loginType,
-            },
-            access_token: data.access_token,
-            refresh_token: data.refresh_token,
-          })
-          // Set auth temporarily so the API calls work
-          api.defaults.headers.common['Authorization'] = `Bearer ${data.access_token}`
-          // Show password change modal
-          setShowChangePassword(true)
-          toast('You must change your password before continuing', { icon: '⚠️' })
-        } else {
-          // Normal login flow - decode token to get actual user ID
+      onSuccess: async (data) => {
+        // Set auth temporarily so we can fetch user info
+        api.defaults.headers.common['Authorization'] = `Bearer ${data.access_token}`
+
+        // Get actual user information from server
+        try {
+          const userResponse = await api.get('/users/me')
+          const userData = userResponse.data
+
+          // Check if password change is required
+          if (data.must_change_password) {
+            setTempAuthData({
+              user: userData,
+              access_token: data.access_token,
+              refresh_token: data.refresh_token,
+            })
+            // Show password change modal
+            setShowChangePassword(true)
+            toast('You must change your password before continuing', { icon: '⚠️' })
+          } else {
+            // Normal login flow with actual user data
+            setAuth(userData, data.access_token, data.refresh_token)
+            toast.success('Login successful!')
+          }
+        } catch (error) {
+          // Fallback if /users/me fails
           const tokenPayload = JSON.parse(atob(data.access_token.split('.')[1]))
           const user = {
             id: parseInt(tokenPayload.sub),
             username: formData.username,
-            type: loginType === 'local' ? 'local_user' as const : 'admin' as const,
+            type: 'admin' as const, // Default to admin for safety
           }
-          setAuth(user, data.access_token, data.refresh_token)
-          toast.success('Login successful!')
+
+          if (data.must_change_password) {
+            setTempAuthData({
+              user,
+              access_token: data.access_token,
+              refresh_token: data.refresh_token,
+            })
+            setShowChangePassword(true)
+            toast('You must change your password before continuing', { icon: '⚠️' })
+          } else {
+            setAuth(user, data.access_token, data.refresh_token)
+            toast.success('Login successful!')
+          }
         }
       },
       onError: (error: any) => {
@@ -84,20 +100,17 @@ export default function LoginPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (loginType === 'admin') {
+    if (loginType === 'staff') {
+      // Staff login can be admin, staff, or support
       loginMutation.mutate({
         admin_login: {
           username: formData.username,
           password: formData.password,
         },
       })
-    } else if (loginType === 'local') {
-      loginMutation.mutate({
-        local_login: {
-          username: formData.username,
-          password: formData.password,
-        },
-      })
+    } else if (loginType === 'user') {
+      // This won't be called directly anymore - handled by modal
+      return
     }
   }
 
@@ -114,87 +127,177 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-white dark:bg-slate-800 shadow rounded-lg p-6">
-          {/* Login Type Toggle */}
+          {/* Login Type Toggle - User first, Staff second */}
           <div className="flex rounded-lg bg-slate-100 dark:bg-slate-700 p-1 mb-6">
             <button
               type="button"
               className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors ${
-                loginType === 'admin'
+                loginType === 'user'
                   ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow'
                   : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
-              onClick={() => setLoginType('admin')}
+              onClick={() => setLoginType('user')}
             >
-              Admin
+              User
             </button>
             <button
               type="button"
               className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors ${
-                loginType === 'local'
+                loginType === 'staff'
                   ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow'
                   : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
-              onClick={() => setLoginType('local')}
+              onClick={() => setLoginType('staff')}
             >
-              Local User
+              Staff
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {loginType === 'user' ? (
+            // Media user authentication options
+            <div className="space-y-4">
+              <p className="text-sm text-slate-600 dark:text-slate-400 text-center">
+                Select your media server to sign in:
+              </p>
 
-            <div>
-              <label htmlFor="username" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                Username
-              </label>
-              <input
-                id="username"
-                type="text"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                className="input mt-1"
-                placeholder="Enter your username"
-                required
-              />
-            </div>
-
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                Password
-              </label>
-              <div className="relative mt-1">
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="input pr-10"
-                  placeholder="Enter your password"
-                  required
-                />
+              <div className="grid grid-cols-3 gap-3">
                 <button
                   type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() => setSelectedProvider('plex')}
+                  className="flex flex-col items-center justify-center p-4 border-2 border-slate-200 dark:border-slate-700 rounded-lg hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-slate-700 transition-colors"
                 >
-                  {showPassword ? (
-                    <EyeSlashIcon className="h-5 w-5 text-slate-400" />
-                  ) : (
-                    <EyeIcon className="h-5 w-5 text-slate-400" />
-                  )}
+                  <img
+                    src="/plex.png"
+                    alt="Plex"
+                    className="w-12 h-12 mb-2 object-contain"
+                  />
+                  <span className="text-sm font-medium">Plex</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedProvider('emby')}
+                  className="flex flex-col items-center justify-center p-4 border-2 border-slate-200 dark:border-slate-700 rounded-lg hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <img
+                    src="/emby.png"
+                    alt="Emby"
+                    className="w-12 h-12 mb-2 object-contain"
+                  />
+                  <span className="text-sm font-medium">Emby</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedProvider('jellyfin')}
+                  className="flex flex-col items-center justify-center p-4 border-2 border-slate-200 dark:border-slate-700 rounded-lg hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <img
+                    src="/jellyfin.png"
+                    alt="Jellyfin"
+                    className="w-12 h-12 mb-2 object-contain"
+                  />
+                  <span className="text-sm font-medium">Jellyfin</span>
                 </button>
               </div>
             </div>
+          ) : (
+            // Staff login form
+            <form onSubmit={handleSubmit} className="space-y-4">
 
-            <button
-              type="submit"
-              disabled={loginMutation.isLoading}
-              className="w-full btn-primary py-3"
-            >
-              {loginMutation.isLoading ? 'Signing in...' : 'Sign in'}
-            </button>
-          </form>
+              <div>
+                <label htmlFor="username" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Username
+                </label>
+                <input
+                  id="username"
+                  type="text"
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  className="input mt-1"
+                  placeholder="Enter your username"
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Password
+                </label>
+                <div className="relative mt-1">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="input pr-10"
+                    placeholder="Enter your password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeSlashIcon className="h-5 w-5 text-slate-400" />
+                    ) : (
+                      <EyeIcon className="h-5 w-5 text-slate-400" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loginMutation.isLoading}
+                className="w-full btn-primary py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loginMutation.isLoading ? 'Signing in...' : 'Sign in'}
+              </button>
+            </form>
+          )}
         </div>
       </div>
+
+      {/* Media Login Modal */}
+      {selectedProvider && (
+        <MediaLoginModal
+          isOpen={!!selectedProvider}
+          onClose={() => setSelectedProvider(null)}
+          provider={selectedProvider}
+          onSuccess={(authData) => {
+            // Handle successful media authentication
+            if (authData.must_change_password) {
+              setTempAuthData({
+                user: authData.user,
+                access_token: authData.access_token,
+                refresh_token: authData.refresh_token,
+              })
+              setShowChangePassword(true)
+              toast('You must change your password before continuing', { icon: '⚠️' })
+            } else {
+              api.defaults.headers.common['Authorization'] = `Bearer ${authData.access_token}`
+
+              // Get user info
+              api.get('/users/me').then(response => {
+                setAuth(response.data, authData.access_token, authData.refresh_token)
+                toast.success('Login successful!')
+              }).catch(() => {
+                // Fallback
+                const tokenPayload = JSON.parse(atob(authData.access_token.split('.')[1]))
+                const user = {
+                  id: parseInt(tokenPayload.sub),
+                  username: 'media_user',
+                  type: 'media_user' as const,
+                }
+                setAuth(user, authData.access_token, authData.refresh_token)
+                toast.success('Login successful!')
+              })
+            }
+          }}
+        />
+      )}
 
       <ChangePasswordModal
         isOpen={showChangePassword}

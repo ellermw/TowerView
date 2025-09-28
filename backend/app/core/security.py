@@ -124,8 +124,8 @@ async def get_current_staff_or_admin(current_user: User = Depends(get_current_us
 
 
 async def get_current_admin_or_local_user(current_user: User = Depends(get_current_user)) -> User:
-    # Allow admin, staff (formerly local_user), and support users
-    if current_user.type not in [UserType.admin, UserType.staff, UserType.local_user, UserType.support]:
+    # Allow admin, staff (formerly local_user), support users, and media users
+    if current_user.type not in [UserType.admin, UserType.staff, UserType.local_user, UserType.support, UserType.media_user]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Authorized user access required"
