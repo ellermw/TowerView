@@ -473,8 +473,9 @@ class PortainerService:
                 actual_endpoint_id = endpoint_id
                 logger.warning(f"No endpoints found, using default ID: {actual_endpoint_id}")
 
-            # Check if integration already exists
-            integration = self.db.query(PortainerIntegration).filter_by(created_by_id=user_id).first()
+            # Check if ANY integration already exists (global)
+            # First try to find any existing integration
+            integration = self.db.query(PortainerIntegration).first()
 
             if not integration:
                 integration = PortainerIntegration(
@@ -482,6 +483,9 @@ class PortainerService:
                     created_by_id=user_id
                 )
                 self.db.add(integration)
+            else:
+                # Update the created_by_id to track who last configured it
+                integration.created_by_id = user_id
 
             # Update settings
             integration.url = url

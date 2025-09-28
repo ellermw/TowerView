@@ -394,7 +394,8 @@ async def get_portainer_status(
     db: Session = Depends(get_db)
 ):
     """Get Portainer integration status"""
-    integration = db.query(PortainerIntegration).filter_by(created_by_id=current_user.id).first()
+    # Look for any enabled Portainer integration (global)
+    integration = db.query(PortainerIntegration).filter_by(enabled=True).first()
 
     if not integration:
         return {
@@ -423,7 +424,8 @@ async def get_portainer_containers(
     db: Session = Depends(get_db)
 ):
     """Get list of Docker containers from Portainer"""
-    integration = db.query(PortainerIntegration).filter_by(created_by_id=current_user.id).first()
+    # Look for any enabled Portainer integration (global)
+    integration = db.query(PortainerIntegration).filter_by(enabled=True).first()
 
     if not integration or not integration.api_token:
         raise HTTPException(
@@ -452,7 +454,8 @@ async def set_container_mapping(
     db: Session = Depends(get_db)
 ):
     """Map a Docker container to a media server"""
-    integration = db.query(PortainerIntegration).filter_by(created_by_id=current_user.id).first()
+    # Look for any enabled Portainer integration (global)
+    integration = db.query(PortainerIntegration).filter_by(enabled=True).first()
 
     if not integration:
         raise HTTPException(
@@ -934,7 +937,8 @@ async def disconnect_portainer(
     db: Session = Depends(get_db)
 ):
     """Disconnect Portainer integration"""
-    integration = db.query(PortainerIntegration).filter_by(created_by_id=current_user.id).first()
+    # Look for any enabled Portainer integration (global)
+    integration = db.query(PortainerIntegration).filter_by(enabled=True).first()
 
     if integration:
         db.delete(integration)

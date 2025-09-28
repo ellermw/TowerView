@@ -186,7 +186,9 @@ export default function UnifiedServerManagement() {
     },
     {
       enabled: servers.length > 0 && (isAdmin || userPermissions.length > 0),
-      refetchInterval: 5000  // 5 seconds for container info
+      refetchInterval: 5000,  // 5 seconds for container info
+      keepPreviousData: true,  // Prevent flickering during refetch
+      staleTime: 2000  // Consider data fresh for 2 seconds
     }
   )
 
@@ -266,7 +268,18 @@ export default function UnifiedServerManagement() {
   )
 
   const ServerCard = ({ server }: { server: Server }) => {
-    const containerInfo = containerInfoMap[server.id] || { mapped: false }
+    // Use stable container info to prevent flickering
+    const containerInfo = useMemo(() =>
+      containerInfoMap[server.id] || { mapped: false },
+      [containerInfoMap, server.id]
+    )
+
+    // Memoize permission check to prevent unnecessary re-renders
+    const hasManagePermission = useMemo(() =>
+      canManageServer(server.id),
+      [server.id, isAdmin, userPermissions]
+    )
+
     const sessionCount = sessionCounts[server.id] || 0
     const typeConfig = SERVER_TYPE_CONFIG[server.type]
 
@@ -276,7 +289,7 @@ export default function UnifiedServerManagement() {
       () => api.get(`/admin/servers/${server.id}/version`).then(res => res.data),
       {
         refetchInterval: 60000, // Check version every minute
-        enabled: server.enabled && (isAdmin || canManageServer(server.id)),  // Fetch for admin users and local users with manage permission
+        enabled: server.enabled && hasManagePermission,  // Fetch for admin users and local users with manage permission
         retry: 2,
         staleTime: 30000, // Consider data stale after 30 seconds
         cacheTime: 60000, // Keep in cache for 1 minute
@@ -289,13 +302,13 @@ export default function UnifiedServerManagement() {
     // Debug logging
     console.log(`Server ${server.name} (ID: ${server.id}):`, {
       containerInfo,
-      canManage: canManageServer(server.id),
+      canManage: hasManagePermission,
       isAdmin,
       userType: user?.type,
       userPermissions,
       versionInfo,
       versionError,
-      shouldShowControls: containerInfo.mapped && canManageServer(server.id)
+      shouldShowControls: containerInfo.mapped && hasManagePermission
     })
 
     return (
@@ -344,7 +357,7 @@ export default function UnifiedServerManagement() {
           </div>
 
           {/* Container Controls - Only show if user has permission */}
-          {containerInfo?.mapped && canManageServer(server.id) && (
+          {containerInfo?.mapped && hasManagePermission && (
             <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -390,7 +403,7 @@ export default function UnifiedServerManagement() {
           )}
 
           {/* Version Info and Update Button - For admin and local users with manage permission */}
-          {(isAdmin || canManageServer(server.id)) && server.enabled && (
+          {hasManagePermission && server.enabled && (
             <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -443,7 +456,7 @@ export default function UnifiedServerManagement() {
           )}
 
           {/* Container Info - Show without controls if no permission */}
-          {containerInfo.mapped && !canManageServer(server.id) && (
+          {containerInfo.mapped && !hasManagePermission && (
             <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">

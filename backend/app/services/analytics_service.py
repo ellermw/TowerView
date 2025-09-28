@@ -49,13 +49,20 @@ class AnalyticsService:
             cutoff_date = datetime.utcnow() - timedelta(days=filters.days_back)
             return PlaybackEvent.started_at >= cutoff_date
 
-    def get_server_filter(self, filters: AnalyticsFilters):
+    def get_server_filter(self, filters: AnalyticsFilters, allowed_server_ids: Optional[List[int]] = None):
         """Generate server filter conditions"""
         if filters.server_id:
             return PlaybackEvent.server_id == filters.server_id
+        elif allowed_server_ids is not None:
+            # Filter by allowed servers for local users
+            if allowed_server_ids:
+                return PlaybackEvent.server_id.in_(allowed_server_ids)
+            else:
+                # User has no permissions, return false to match nothing
+                return False
         return True
 
-    def get_top_users(self, filters: AnalyticsFilters, limit: int = 5) -> List[TopUserResponse]:
+    def get_top_users(self, filters: AnalyticsFilters, limit: int = 5, allowed_server_ids: Optional[List[int]] = None) -> List[TopUserResponse]:
         """Get most active users based on completed plays"""
         query = self.db.query(
             PlaybackEvent.username,
@@ -72,7 +79,7 @@ class AnalyticsService:
         ).join(Server, PlaybackEvent.server_id == Server.id)\
          .filter(and_(
              self.get_date_filter(filters),
-             self.get_server_filter(filters),
+             self.get_server_filter(filters, allowed_server_ids),
              PlaybackEvent.username.isnot(None),
              PlaybackEvent.is_complete == True  # Only count completed plays
          ))\
@@ -92,7 +99,7 @@ class AnalyticsService:
             ))
         return results
 
-    def get_top_movies(self, filters: AnalyticsFilters, limit: int = 5) -> List[TopMediaResponse]:
+    def get_top_movies(self, filters: AnalyticsFilters, limit: int = 5, allowed_server_ids: Optional[List[int]] = None) -> List[TopMediaResponse]:
         """Get most watched movies"""
         query = self.db.query(
             PlaybackEvent.media_title,
@@ -110,7 +117,7 @@ class AnalyticsService:
         ).join(Server, PlaybackEvent.server_id == Server.id)\
          .filter(and_(
              self.get_date_filter(filters),
-             self.get_server_filter(filters),
+             self.get_server_filter(filters, allowed_server_ids),
              PlaybackEvent.media_type == 'movie',
              PlaybackEvent.media_title.isnot(None)
          ))\
@@ -132,7 +139,7 @@ class AnalyticsService:
             ))
         return results
 
-    def get_top_tv_shows(self, filters: AnalyticsFilters, limit: int = 5) -> List[TopMediaResponse]:
+    def get_top_tv_shows(self, filters: AnalyticsFilters, limit: int = 5, allowed_server_ids: Optional[List[int]] = None) -> List[TopMediaResponse]:
         """Get most watched TV shows"""
         query = self.db.query(
             PlaybackEvent.grandparent_title,
@@ -149,7 +156,7 @@ class AnalyticsService:
         ).join(Server, PlaybackEvent.server_id == Server.id)\
          .filter(and_(
              self.get_date_filter(filters),
-             self.get_server_filter(filters),
+             self.get_server_filter(filters, allowed_server_ids),
              PlaybackEvent.media_type == 'episode',
              PlaybackEvent.grandparent_title.isnot(None)
          ))\
@@ -171,7 +178,7 @@ class AnalyticsService:
             ))
         return results
 
-    def get_top_libraries(self, filters: AnalyticsFilters, limit: int = 5) -> List[TopLibraryResponse]:
+    def get_top_libraries(self, filters: AnalyticsFilters, limit: int = 5, allowed_server_ids: Optional[List[int]] = None) -> List[TopLibraryResponse]:
         """Get most used libraries"""
         query = self.db.query(
             PlaybackEvent.library_section,
@@ -188,7 +195,7 @@ class AnalyticsService:
         ).join(Server, PlaybackEvent.server_id == Server.id)\
          .filter(and_(
              self.get_date_filter(filters),
-             self.get_server_filter(filters),
+             self.get_server_filter(filters, allowed_server_ids),
              PlaybackEvent.library_section.isnot(None)
          ))\
          .group_by(PlaybackEvent.library_section, Server.name)\
@@ -207,7 +214,7 @@ class AnalyticsService:
             ))
         return results
 
-    def get_top_devices(self, filters: AnalyticsFilters, limit: int = 5) -> List[TopDeviceResponse]:
+    def get_top_devices(self, filters: AnalyticsFilters, limit: int = 5, allowed_server_ids: Optional[List[int]] = None) -> List[TopDeviceResponse]:
         """Get most used devices"""
         query = self.db.query(
             PlaybackEvent.device,
@@ -229,7 +236,7 @@ class AnalyticsService:
             ).label('transcode_percentage')
         ).filter(and_(
              self.get_date_filter(filters),
-             self.get_server_filter(filters),
+             self.get_server_filter(filters, allowed_server_ids),
              PlaybackEvent.device.isnot(None)
          ))\
          .group_by(PlaybackEvent.device, PlaybackEvent.platform, PlaybackEvent.product)\
@@ -249,13 +256,13 @@ class AnalyticsService:
             ))
         return results
 
-    def get_dashboard_analytics(self, filters: AnalyticsFilters) -> DashboardAnalyticsResponse:
+    def get_dashboard_analytics(self, filters: AnalyticsFilters, allowed_server_ids: Optional[List[int]] = None) -> DashboardAnalyticsResponse:
         """Get comprehensive analytics for dashboard"""
 
         # Get summary stats
         base_query = self.db.query(PlaybackEvent).filter(and_(
             self.get_date_filter(filters),
-            self.get_server_filter(filters)
+            self.get_server_filter(filters, allowed_server_ids)
         ))
 
         total_sessions = base_query.count()
@@ -283,11 +290,11 @@ class AnalyticsService:
 
         return DashboardAnalyticsResponse(
             filters=filters,
-            top_users=self.get_top_users(filters),
-            top_movies=self.get_top_movies(filters),
-            top_tv_shows=self.get_top_tv_shows(filters),
-            top_libraries=self.get_top_libraries(filters),
-            top_devices=self.get_top_devices(filters),
+            top_users=self.get_top_users(filters, allowed_server_ids=allowed_server_ids),
+            top_movies=self.get_top_movies(filters, allowed_server_ids=allowed_server_ids),
+            top_tv_shows=self.get_top_tv_shows(filters, allowed_server_ids=allowed_server_ids),
+            top_libraries=self.get_top_libraries(filters, allowed_server_ids=allowed_server_ids),
+            top_devices=self.get_top_devices(filters, allowed_server_ids=allowed_server_ids),
             total_sessions=total_sessions,
             total_users=total_users,
             total_watch_time_hours=total_watch_time_hours,

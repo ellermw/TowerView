@@ -718,6 +718,7 @@ async def get_analytics(
     from ...services.analytics_service import AnalyticsService
 
     # Filter servers based on user permissions
+    allowed_server_ids = None
     if current_user.type == UserType.local_user:
         # Get servers the local user has analytics permissions for
         permissions = db.query(UserPermission).filter(
@@ -734,12 +735,15 @@ async def get_analytics(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="No permission to view analytics for this server"
                 )
-        # Note: if server_id is None, the analytics service will use all servers
-        # which we'll need to filter in the service itself
+        # If no specific server is selected, we'll pass allowed_server_ids to the service
 
     analytics_service = AnalyticsService(db)
     try:
-        analytics_data = analytics_service.get_dashboard_analytics(filters)
+        # Pass allowed_server_ids for local users
+        analytics_data = analytics_service.get_dashboard_analytics(
+            filters,
+            allowed_server_ids=allowed_server_ids
+        )
         return analytics_data
     except Exception as e:
         # If analytics fails, return empty data to prevent dashboard crash
