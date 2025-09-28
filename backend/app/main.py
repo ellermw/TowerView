@@ -13,6 +13,8 @@ from .api.routes import settings as settings_router
 from .services.auth_service import AuthService
 from .services.metrics_cache_service import metrics_cache
 from .services.bandwidth_cache import start_bandwidth_tracking, stop_bandwidth_tracking
+from .services.sessions_cache_service import sessions_cache_service
+from .services.users_cache_service import users_cache_service
 
 # Configure logging
 logging.basicConfig(
@@ -39,6 +41,14 @@ async def lifespan(app: FastAPI):
     await metrics_cache.start()
     logging.info("Started background metrics collection service")
 
+    # Start sessions cache service
+    await sessions_cache_service.start()
+    logging.info("Started sessions cache service")
+
+    # Start users cache service
+    await users_cache_service.start()
+    logging.info("Started users cache service")
+
     # Start bandwidth tracking
     await start_bandwidth_tracking(db)
     logging.info("Started bandwidth tracking service")
@@ -48,6 +58,12 @@ async def lifespan(app: FastAPI):
     # Stop background services on shutdown
     await metrics_cache.stop()
     logging.info("Stopped background metrics collection service")
+
+    await sessions_cache_service.stop()
+    logging.info("Stopped sessions cache service")
+
+    await users_cache_service.stop()
+    logging.info("Stopped users cache service")
 
     stop_bandwidth_tracking()
     logging.info("Stopped bandwidth tracking service")

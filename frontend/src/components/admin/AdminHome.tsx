@@ -420,7 +420,8 @@ export default function AdminHome() {
           <img
             src="/plex.png"
             alt="Plex"
-            className="h-6 w-6 inline-block rounded"
+            className="h-6 w-6 inline-block"
+            style={{ backgroundColor: 'transparent' }}
           />
         )
       case 'emby':
@@ -428,7 +429,8 @@ export default function AdminHome() {
           <img
             src="/emby.png"
             alt="Emby"
-            className="h-6 w-6 inline-block rounded"
+            className="h-6 w-6 inline-block"
+            style={{ backgroundColor: 'transparent' }}
           />
         )
       case 'jellyfin':
@@ -436,7 +438,8 @@ export default function AdminHome() {
           <img
             src="/jellyfin.png"
             alt="Jellyfin"
-            className="h-6 w-6 inline-block rounded"
+            className="h-6 w-6 inline-block"
+            style={{ backgroundColor: 'transparent' }}
           />
         )
       default:

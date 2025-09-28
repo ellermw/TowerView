@@ -320,7 +320,7 @@ export default function UnifiedServerManagement() {
           {/* Server Info */}
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-start space-x-3">
-              <img src={typeConfig.icon} alt={typeConfig.name} className="h-8 w-8 rounded" />
+              <img src={typeConfig.icon} alt={typeConfig.name} className="h-8 w-8" style={{ backgroundColor: 'transparent' }} />
               <div>
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                   {server.name}

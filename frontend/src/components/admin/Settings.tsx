@@ -17,26 +17,6 @@ import {
 } from '@heroicons/react/24/outline'
 import api from '../../services/api'
 
-interface NetdataNode {
-  id: string
-  name: string
-  hostname: string
-  os: string
-  status: string
-  last_seen: number
-  capabilities: string[]
-}
-
-interface NetdataIntegration {
-  id: number
-  enabled: boolean
-  has_token: boolean
-  space_id: string | null
-  node_mappings: Record<string, { node_id: string; node_name: string; container_name?: string }>
-  cached_nodes: NetdataNode[]
-  nodes_updated_at: string | null
-}
-
 interface DockerContainer {
   id: string
   name: string
@@ -70,7 +50,7 @@ interface PortainerIntegration {
 
 export default function Settings() {
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState('portainer')
+  const [activeTab, setActiveTab] = useState('general')
   const [apiToken, setApiToken] = useState('')
   const [showTokenInput, setShowTokenInput] = useState(false)
   const [selectedMappings, setSelectedMappings] = useState<Record<number, string>>({})
@@ -84,14 +64,8 @@ export default function Settings() {
   const [showPortainerAuth, setShowPortainerAuth] = useState(false)
   const [portainerContainerMappings, setPortainerContainerMappings] = useState<Record<number, string>>({})
 
-  // Fetch Netdata integration status
-  const { data: netdataStatus, isLoading: netdataLoading } = useQuery<NetdataIntegration>(
-    'netdata-status',
-    () => api.get('/settings/netdata/status').then(res => res.data),
-    {
-      refetchInterval: 30000
-    }
-  )
+  // Site settings state
+  const [siteName, setSiteName] = useState('The Tower - View')
 
   // Fetch available servers
   const { data: servers = [] } = useQuery<Server[]>(
@@ -117,12 +91,34 @@ export default function Settings() {
     }
   )
 
-  // Fetch Netdata nodes
-  const { data: nodes = [], refetch: refetchNodes } = useQuery<NetdataNode[]>(
-    'netdata-nodes',
-    () => api.get('/settings/netdata/nodes').then(res => res.data),
+  // Fetch site settings
+  const { data: siteSettings } = useQuery(
+    'site-settings',
+    () => api.get('/settings/site').then(res => res.data),
     {
-      enabled: netdataStatus?.has_token ?? false
+      onSuccess: (data) => {
+        if (data?.site_name) {
+          setSiteName(data.site_name)
+        }
+      }
+    }
+  )
+
+  // Save site name mutation
+  const saveSiteName = useMutation(
+    (name: string) => api.post('/settings/site', { site_name: name }),
+    {
+      onSuccess: () => {
+        toast.success('Site name updated successfully')
+        queryClient.invalidateQueries('site-settings')
+        // Update localStorage for immediate effect
+        localStorage.setItem('siteName', siteName)
+        // Reload to apply the new name
+        setTimeout(() => window.location.reload(), 500)
+      },
+      onError: () => {
+        toast.error('Failed to save site name')
+      }
     }
   )
 
@@ -202,32 +198,18 @@ export default function Settings() {
     }
   }
 
+  const handleSaveSiteName = () => {
+    if (!siteName.trim()) {
+      toast.error('Site name cannot be empty')
+      return
+    }
+    saveSiteName.mutate(siteName)
+  }
+
   return (
     <div className="space-y-6">
       {/* Tabs */}
       <div className="flex space-x-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-        <button
-          onClick={() => setActiveTab('portainer')}
-          className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-            activeTab === 'portainer'
-              ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-          }`}
-        >
-          <CubeIcon className="h-5 w-5" />
-          <span>Portainer</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('netdata')}
-          className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-            activeTab === 'netdata'
-              ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-          }`}
-        >
-          <CloudIcon className="h-5 w-5" />
-          <span>Netdata Cloud</span>
-        </button>
         <button
           onClick={() => setActiveTab('general')}
           className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
@@ -238,6 +220,17 @@ export default function Settings() {
         >
           <CogIcon className="h-5 w-5" />
           <span>General</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('portainer')}
+          className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+            activeTab === 'portainer'
+              ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <CubeIcon className="h-5 w-5" />
+          <span>Portainer</span>
         </button>
       </div>
 
@@ -465,48 +458,44 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Netdata Tab Content */}
-      {activeTab === 'netdata' && (
-        <div className="space-y-6">
-          <div className="card">
-            <div className="card-body">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Netdata Cloud Integration (Deprecated)
-                </h2>
-                {netdataStatus?.has_token && (
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-                    <ExclamationTriangleIcon className="h-4 w-4 mr-1" />
-                    Limited API
-                  </span>
-                )}
-              </div>
-
-              <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <ExclamationTriangleIcon className="h-5 w-5 text-yellow-400" />
-                  </div>
-                  <div className="ml-3">
-                    <p className="text-sm text-yellow-700">
-                      <strong>Note:</strong> Netdata Cloud's public API does not provide access to metrics data.
-                      Use Portainer integration instead for monitoring container resources.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                Netdata Cloud integration is deprecated. Please use Portainer for container monitoring.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* General Tab Content */}
       {activeTab === 'general' && (
         <div className="space-y-6">
+          {/* Site Configuration */}
+          <div className="card">
+            <div className="card-body">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+                Site Configuration
+              </h2>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Site Name
+                  </label>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
+                    Customize the name of your application
+                  </p>
+                  <div className="flex gap-3">
+                    <input
+                      type="text"
+                      value={siteName}
+                      onChange={(e) => setSiteName(e.target.value)}
+                      placeholder="Enter site name"
+                      className="input flex-1"
+                    />
+                    <button
+                      onClick={() => handleSaveSiteName()}
+                      className="btn btn-primary"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Metrics Update Settings */}
           <div className="card">
             <div className="card-body">

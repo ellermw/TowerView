@@ -231,55 +231,18 @@ async def get_all_sessions(
     current_user: User = Depends(get_current_admin_or_local_user),
     db: Session = Depends(get_db)
 ):
-    """Get active sessions from all servers accessible by the user"""
+    """Get active sessions from all servers accessible by the user (from cache)"""
     from ...models.user import UserType
-    from ...models.user_permission import UserPermission
+    from ...services.sessions_cache_service import sessions_cache_service
 
-    server_service = ServerService(db)
+    # Get sessions from cache instead of hitting servers directly
+    cached_sessions = await sessions_cache_service.get_cached_sessions(
+        user_id=current_user.id,
+        user_type=current_user.type.value,
+        db=db
+    )
 
-    # Get servers based on user type
-    if current_user.type == UserType.admin:
-        servers = server_service.get_servers_by_owner(current_user.id)
-    else:
-        # Local users see servers they have permission to view sessions for
-        permissions = db.query(UserPermission).filter(
-            UserPermission.user_id == current_user.id,
-            UserPermission.can_view_sessions == True
-        ).all()
-        server_ids = [perm.server_id for perm in permissions]
-        if server_ids:
-            servers = db.query(Server).filter(Server.id.in_(server_ids)).all()
-        else:
-            servers = []
-
-    all_sessions = []
-
-    for server in servers:
-        if not server.enabled:
-            continue
-
-        try:
-            provider = ProviderFactory.create_provider(server, db)
-            sessions = await provider.list_active_sessions()
-
-            # Add server info to each session
-            for session in sessions:
-                session["server_name"] = server.name
-                session["server_type"] = server.type.value
-                session["server_id"] = server.id
-
-                # Track analytics for this session
-                try:
-                    await track_session_analytics(db, server.id, session)
-                except Exception as analytics_error:
-                    print(f"Analytics tracking error for {server.name}: {analytics_error}")
-
-            all_sessions.extend(sessions)
-        except Exception as e:
-            print(f"Failed to fetch sessions from server {server.name}: {e}")
-            continue
-
-    return all_sessions
+    return cached_sessions
 
 
 async def track_session_analytics(db: Session, server_id: int, session: dict):
@@ -613,6 +576,34 @@ async def get_all_sessions_old(
     return all_sessions
 
 
+@router.get("/sessions/cache-status")
+async def get_sessions_cache_status(
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Get the current status of the sessions cache"""
+    from ...services.sessions_cache_service import sessions_cache_service
+
+    return sessions_cache_service.get_cache_status()
+
+
+@router.post("/sessions/refresh-cache")
+async def refresh_sessions_cache(
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Manually trigger a refresh of the sessions cache"""
+    from ...services.sessions_cache_service import sessions_cache_service
+
+    # Force a cache refresh
+    await sessions_cache_service._collect_all_sessions()
+
+    return {
+        "message": "Cache refresh triggered",
+        "status": sessions_cache_service.get_cache_status()
+    }
+
+
 @router.get("/sessions/counts")
 async def get_session_counts(
     current_user: User = Depends(get_current_admin_user),
@@ -650,45 +641,45 @@ async def get_all_users(
     current_user: User = Depends(get_current_admin_or_local_user),
     db: Session = Depends(get_db)
 ):
-    """Get users from all servers"""
-    from ...models.user_permission import UserPermission
+    """Get users from all servers (from cache)"""
+    from ...services.users_cache_service import users_cache_service
 
-    server_service = ServerService(db)
+    # Get users from cache instead of hitting servers directly
+    cached_users = await users_cache_service.get_cached_users(
+        user_id=current_user.id,
+        user_type=current_user.type.value,
+        db=db
+    )
 
-    # Get servers based on user type
-    if current_user.type == UserType.admin:
-        servers = server_service.get_servers_by_owner(current_user.id)
-    else:
-        # Local users - get servers they have view_users permission for
-        permissions = db.query(UserPermission).filter(
-            UserPermission.user_id == current_user.id,
-            UserPermission.can_view_users == True
-        ).all()
-        server_ids = [perm.server_id for perm in permissions]
-        if server_ids:
-            servers = db.query(Server).filter(Server.id.in_(server_ids)).all()
-        else:
-            servers = []
+    return cached_users
 
-    all_users = []
-    for server in servers:
-        if not server.enabled:
-            continue
 
-        try:
-            provider = ProviderFactory.create_provider(server, db)
-            users = await provider.list_users()
-            # Add server info to each user
-            for user in users:
-                user["server_name"] = server.name
-                user["server_id"] = server.id
-                user["server_type"] = server.type.value
-            all_users.extend(users)
-        except Exception as e:
-            print(f"Failed to fetch users from server {server.name}: {e}")
-            continue
+@router.get("/users/cache-status")
+async def get_users_cache_status(
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Get the current status of the users cache"""
+    from ...services.users_cache_service import users_cache_service
 
-    return all_users
+    return users_cache_service.get_cache_status()
+
+
+@router.post("/users/refresh-cache")
+async def refresh_users_cache(
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Manually trigger a refresh of the users cache"""
+    from ...services.users_cache_service import users_cache_service
+
+    # Force a cache refresh
+    await users_cache_service._collect_all_users()
+
+    return {
+        "message": "Users cache refresh triggered",
+        "status": users_cache_service.get_cache_status()
+    }
 
 
 @router.get("/bandwidth")

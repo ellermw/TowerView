@@ -6,6 +6,8 @@ import { useAuthStore } from '../store/authStore'
 import { classNames } from '../utils/classNames'
 import ChangePasswordModal from './ChangePasswordModal'
 import { usePermissions } from '../hooks/usePermissions'
+import { useQuery } from 'react-query'
+import api from '../services/api'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -17,6 +19,18 @@ export default function Layout({ children }: LayoutProps) {
   const [showChangePassword, setShowChangePassword] = useState(false)
   const { hasPermission, isAdmin, isLocalUser } = usePermissions()
   const [navigation, setNavigation] = useState<Array<{ name: string; href: string }>>([])
+
+  // Fetch site settings
+  const { data: siteSettings } = useQuery(
+    'site-settings',
+    () => api.get('/settings/site').then(res => res.data),
+    {
+      staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+      cacheTime: 10 * 60 * 1000,
+    }
+  )
+
+  const siteName = siteSettings?.site_name || localStorage.getItem('siteName') || 'The Tower - View'
 
   const isCurrentPath = (href: string) => {
     // Exact match for root paths
@@ -77,7 +91,7 @@ export default function Layout({ children }: LayoutProps) {
                 <div className="flex">
                   <div className="flex-shrink-0 flex items-center">
                     <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-                      The Tower - View
+                      {siteName}
                     </h1>
                   </div>
                   <div className="hidden sm:ml-6 sm:flex sm:space-x-8">

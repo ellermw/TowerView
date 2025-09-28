@@ -260,7 +260,8 @@ export default function SessionsList() {
           <img
             src="/plex.png"
             alt="Plex"
-            className="h-8 w-8 rounded"
+            className="h-8 w-8"
+            style={{ backgroundColor: 'transparent' }}
           />
         )
       case 'emby':
@@ -268,7 +269,8 @@ export default function SessionsList() {
           <img
             src="/emby.png"
             alt="Emby"
-            className="h-8 w-8 rounded"
+            className="h-8 w-8"
+            style={{ backgroundColor: 'transparent' }}
           />
         )
       case 'jellyfin':
@@ -276,7 +278,8 @@ export default function SessionsList() {
           <img
             src="/jellyfin.png"
             alt="Jellyfin"
-            className="h-8 w-8 rounded"
+            className="h-8 w-8"
+            style={{ backgroundColor: 'transparent' }}
           />
         )
       default:

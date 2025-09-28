@@ -33,6 +33,7 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 - **Network throughput visualization** with upload/download metrics
 - **Container health monitoring** via Portainer integration
 - **Background metrics collection** for instant loading
+- **Intelligent caching system** for sessions and user data with automatic refresh
 
 ### Security Features
 
@@ -137,6 +138,21 @@ TowerView/
    - Endpoint ID
 3. Map servers to Docker containers
 
+### Performance & Caching
+
+TowerView includes intelligent caching systems for optimal performance:
+
+- **Sessions Cache**: Updates every 2 seconds, cached for 5 seconds
+- **Users Cache**: Updates every 60 seconds, cached for 2 minutes
+- **Metrics Cache**: Background collection for instant dashboard loading
+- **Bandwidth Cache**: Real-time tracking with historical data storage
+
+Cache status and manual refresh available in admin endpoints:
+- `/api/admin/sessions/cache-status` - View sessions cache status
+- `/api/admin/sessions/refresh-cache` - Force sessions cache refresh
+- `/api/admin/users/cache-status` - View users cache status
+- `/api/admin/users/refresh-cache` - Force users cache refresh
+
 ## 🛡️ Permission System
 
 ### Admin Permissions
@@ -184,6 +200,16 @@ DELETE /api/admin/local-users/{id} # Delete user
 ```
 GET  /api/settings/portainer/metrics/{server_id}
 POST /api/settings/portainer/container/{server_id}/action
+GET  /api/settings/site                     # Get site settings
+POST /api/settings/site                     # Update site settings
+```
+
+### Cache Management
+```
+GET  /api/admin/sessions/cache-status       # Sessions cache status
+POST /api/admin/sessions/refresh-cache      # Force sessions refresh
+GET  /api/admin/users/cache-status          # Users cache status
+POST /api/admin/users/refresh-cache         # Force users refresh
 ```
 
 ## 🚢 Production Deployment
@@ -308,6 +334,10 @@ MIT License - see [LICENSE](LICENSE) file for details
 ## 📝 Changelog
 
 ### Version 2.1.0 (Current - Stable)
+- ✨ Intelligent caching system for sessions and user data
+- ✨ Background data collection with automatic refresh
+- ✨ Cache status monitoring and manual refresh endpoints
+- ✨ Custom site name configuration
 - ✨ Custom server icons for Plex, Emby, and Jellyfin
 - ✨ Simplified transcoding display for Emby/Jellyfin
 - ✨ Transparent icon backgrounds for theme compatibility
@@ -315,6 +345,7 @@ MIT License - see [LICENSE](LICENSE) file for details
 - 🔧 Stabilized session monitoring
 - 🔧 Improved bandwidth caching system
 - 📊 Enhanced real-time metrics display
+- ⚡ Significantly improved performance for session and user data retrieval
 
 ### Version 2.0.0
 - ✨ Complete transformation to admin/support tool
