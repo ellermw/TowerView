@@ -252,12 +252,19 @@ async def get_all_sessions(
     from ...models.user import UserType
     from ...services.sessions_cache_service import sessions_cache_service
 
+    # Debug logging
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Sessions API called - User: {current_user.username}, Type: {current_user.type.value}, ID: {current_user.id}")
+
     # Get sessions from cache instead of hitting servers directly
     cached_sessions = await sessions_cache_service.get_cached_sessions(
         user_id=current_user.id,
         user_type=current_user.type.value,
         db=db
     )
+
+    logger.info(f"Returning {len(cached_sessions)} sessions to user {current_user.username}")
 
     return cached_sessions
 

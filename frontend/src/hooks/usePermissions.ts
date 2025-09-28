@@ -91,7 +91,7 @@ export function usePermissions() {
       if (user.type === 'media_user') {
         setPermissions({
           view_analytics: true,    // Can view dashboard analytics
-          view_sessions: false,    // Cannot view sessions page
+          view_sessions: true,     // Can view sessions on dashboard
           terminate_sessions: false,
           view_users: false,       // Cannot view users page
           manage_users: false,

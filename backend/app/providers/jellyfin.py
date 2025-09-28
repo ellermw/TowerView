@@ -45,15 +45,46 @@ class JellyfinProvider(BaseProvider):
         """Authenticate user with Jellyfin"""
         try:
             async with httpx.AsyncClient(verify=False) as client:
-                # Jellyfin authentication doesn't require API key for initial auth
-                # Modern Jellyfin uses only Username and Pw fields
-                auth_data = {
+                # Try both authentication methods since different Jellyfin versions use different approaches
+                base_url = self.base_url.rstrip('/')
+
+                # Method 1: Try with form-encoded data (works better with special characters)
+                headers_form = {
+                    "X-Emby-Client": "TowerView",
+                    "X-Emby-Device-Name": "TowerView",
+                    "X-Emby-Device-Id": "towerview-auth",
+                    "X-Emby-Client-Version": "1.0.0",
+                    "Content-Type": "application/x-www-form-urlencoded"
+                }
+
+                # Form data approach
+                form_data = {
                     "Username": username,
                     "Pw": password
                 }
 
-                # Add client identification headers
-                headers = {
+                try:
+                    response = await client.post(
+                        f"{base_url}/Users/AuthenticateByName",
+                        data=form_data,
+                        headers=headers_form,
+                        timeout=10.0
+                    )
+
+                    if response.status_code == 200:
+                        data = response.json()
+                        user = data.get("User", {})
+                        return {
+                            "user_id": user.get("Id"),
+                            "username": user.get("Name"),
+                            "email": user.get("Email"),
+                            "token": data.get("AccessToken")
+                        }
+                except:
+                    pass
+
+                # Method 2: Try with JSON but with Password field instead of Pw
+                headers_json = {
                     "X-Emby-Client": "TowerView",
                     "X-Emby-Device-Name": "TowerView",
                     "X-Emby-Device-Id": "towerview-auth",
@@ -61,13 +92,16 @@ class JellyfinProvider(BaseProvider):
                     "Content-Type": "application/json"
                 }
 
-                # Try authentication without API key first (for user auth)
-                # Jellyfin may use a different endpoint path
-                base_url = self.base_url.rstrip('/')
+                # Try with Password field
+                auth_data = {
+                    "Username": username,
+                    "Password": password
+                }
+
                 response = await client.post(
                     f"{base_url}/Users/AuthenticateByName",
                     json=auth_data,
-                    headers=headers,
+                    headers=headers_json,
                     timeout=10.0
                 )
 

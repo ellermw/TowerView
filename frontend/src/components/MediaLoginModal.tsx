@@ -69,12 +69,14 @@ export default function MediaLoginModal({ isOpen, onClose, provider, onSuccess }
             // PIN expired or not found
             setCheckingPlex(false)
             setPlexAuthOpened(false)
-            toast.error(error.response?.data?.detail || 'Authentication PIN has expired. Please try again.')
-            // Reset OAuth state to allow restart
+            toast.error('Authentication PIN expired. Generating a new PIN...')
+            // Reset OAuth state and automatically reinitialize
             setPlexPinId('')
             setPlexPinCode('')
             setPlexAuthUrl('')
             setPlexClientId('')
+            // Automatically reinitialize OAuth
+            setTimeout(() => initiatePlexOAuth(), 1000)
           } else if (error.response?.status === 400) {
             // Other authentication errors
             setCheckingPlex(false)
@@ -222,12 +224,17 @@ export default function MediaLoginModal({ isOpen, onClose, provider, onSuccess }
                       </p>
                     </div>
                   ) : (
-                    <button
-                      onClick={openPlexAuth}
-                      className="btn-secondary w-full"
-                    >
-                      Sign in with Plex OAuth
-                    </button>
+                    <div className="space-y-2">
+                      <button
+                        onClick={openPlexAuth}
+                        className="btn-secondary w-full"
+                      >
+                        Sign in with Plex OAuth
+                      </button>
+                      <p className="text-xs text-center text-slate-500 dark:text-slate-400">
+                        Note: You have 10 minutes to complete authentication
+                      </p>
+                    </div>
                   )}
                 </div>
               ) : (

@@ -1185,51 +1185,6 @@ export default function AdminHome() {
                                                     </div>
                                                   ) : null}
 
-                                                  {/* Transcode Details */}
-                                                  {session.video_decision === 'transcode' && (
-                                                    <div className="border-t border-slate-200 dark:border-slate-700 pt-2 mt-2">
-                                                      <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Transcode Details:</div>
-                                                      <div className="space-y-1">
-                                                        {session.transcode_hw_decode !== undefined && (
-                                                          <div className="flex justify-between">
-                                                            <span>Decode:</span>
-                                                            <span className={`font-medium ${session.transcode_hw_decode ? 'text-purple-600 dark:text-purple-400' : 'text-orange-600 dark:text-orange-400'}`}>
-                                                              {session.transcode_hw_decode ?
-                                                                (session.transcode_hw_decode_title || 'Hardware') :
-                                                                'Software'}
-                                                            </span>
-                                                          </div>
-                                                        )}
-                                                        {session.transcode_hw_encode !== undefined && (
-                                                          <div className="flex justify-between">
-                                                            <span>Encode:</span>
-                                                            <span className={`font-medium ${session.transcode_hw_encode ? 'text-purple-600 dark:text-purple-400' : 'text-orange-600 dark:text-orange-400'}`}>
-                                                              {session.transcode_hw_encode ?
-                                                                (session.transcode_hw_encode_title || 'Hardware') :
-                                                                'Software'}
-                                                            </span>
-                                                          </div>
-                                                        )}
-                                                        {session.transcode_speed !== undefined && (
-                                                          <div className="flex justify-between">
-                                                            <span>Speed:</span>
-                                                            <span className={`font-medium ${session.transcode_speed >= 1.0 ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
-                                                              {session.transcode_speed?.toFixed(1) || '0.0'}x
-                                                            </span>
-                                                          </div>
-                                                        )}
-                                                        {session.transcode_throttled && (
-                                                          <div className="flex justify-between">
-                                                            <span>Status:</span>
-                                                            <span className="font-medium text-yellow-600 dark:text-yellow-400">
-                                                              Throttled
-                                                            </span>
-                                                          </div>
-                                                        )}
-                                                      </div>
-                                                    </div>
-                                                  )}
-
                                                   <div className="flex justify-between">
                                                     <span>Bandwidth:</span>
                                                     <span className="font-medium text-blue-600 dark:text-blue-400">

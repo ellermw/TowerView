@@ -92,6 +92,12 @@ class SessionsCacheService:
 
             visible_server_ids = [server.id for server in visible_servers]
 
+            # Debug logging
+            logger.info(f"Media user filtering - User ID: {user_id}, Type: {user_type}")
+            logger.info(f"Visible server IDs: {visible_server_ids}")
+            logger.info(f"Total sessions before filter: {len(sessions)}")
+            logger.info(f"Session server IDs: {[s.get('server_id') for s in sessions]}")
+
             # Get the current media user's username
             current_user = db.query(User).filter(User.id == user_id).first()
             current_username = current_user.username.lower() if current_user else ""
@@ -99,7 +105,9 @@ class SessionsCacheService:
             # Filter sessions to only those from visible servers and censor usernames
             filtered_sessions = []
             for session in sessions:
-                if session.get("server_id") in visible_server_ids:
+                session_server_id = session.get("server_id")
+                logger.info(f"Checking session - Server ID: {session_server_id}, in visible list: {session_server_id in visible_server_ids}")
+                if session_server_id in visible_server_ids:
                     # Make a copy of the session to avoid modifying the cache
                     session_copy = session.copy()
 
@@ -111,6 +119,7 @@ class SessionsCacheService:
 
                     filtered_sessions.append(session_copy)
 
+            logger.info(f"Filtered sessions count: {len(filtered_sessions)}")
             return filtered_sessions
 
         # Support users can also see all sessions (view-only role)

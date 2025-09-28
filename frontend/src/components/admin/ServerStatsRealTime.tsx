@@ -94,10 +94,10 @@ export default function ServerStatsRealTime({ serverId, metrics: wsMetrics, isCo
 
   // Check if container is mapped or metrics are placeholder
   if (!metrics.container || (metrics.cpu_usage === 0 && metrics.memory_usage === 0 && !metrics.timestamp)) {
+    // Don't show Portainer message, just show a simple placeholder
     return (
-      <div className="flex items-center p-4 text-slate-500 dark:text-slate-400">
-        <ExclamationCircleIcon className="h-5 w-5 mr-2" />
-        <span className="text-sm">Configure Portainer in Settings for metrics</span>
+      <div className="flex items-center justify-center p-4 text-slate-400 dark:text-slate-500">
+        <span className="text-sm">No metrics available</span>
       </div>
     )
   }
