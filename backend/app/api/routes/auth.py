@@ -141,6 +141,13 @@ async def authenticate_media_user(
 ):
     """Authenticate user with their media server"""
 
+    # Temporarily disable media user authentication as it's not fully implemented
+    raise HTTPException(
+        status_code=501,
+        detail="Media user authentication is currently under development. Please use Staff login to access the platform."
+    )
+
+    # Original code below (disabled)
     import logging
     logger = logging.getLogger(__name__)
     logger.info(f"Media authentication request: provider={auth_data.provider}, username={auth_data.username}, has_token={bool(auth_data.auth_token)}")
