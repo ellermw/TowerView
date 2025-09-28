@@ -15,6 +15,17 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 - **Audit Logging**: Complete audit trail of all administrative actions with filtering and search
 - **Container Management**: Docker container control via Portainer integration
 
+### Navigation Structure
+
+- **Dashboard**: Main overview with server stats and active sessions
+- **Management** (dropdown menu):
+  - **Servers**: Add/edit/remove media servers
+  - **Sessions**: View and manage active streaming sessions
+  - **Users**: View media server users
+  - **System Users**: Create and manage TowerView users (admin only)
+- **Audit Logs**: View all system activity (admin only)
+- **Settings**: System configuration and integrations
+
 ### User Roles & Hierarchy
 
 1. **Admin**: Full system access with complete control
@@ -98,9 +109,9 @@ docker-compose build
 docker-compose up -d
 
 # 4. Access the application
-# Frontend: http://your-server:8080
-# API: http://your-server:8000
-# API Docs: http://your-server:8000/docs
+# Main Application: http://your-server:8080
+# API Documentation: http://your-server:8080/api/docs
+# Note: All services are proxied through nginx on port 8080
 ```
 
 ### Default Credentials
@@ -139,31 +150,39 @@ TowerView/
 ### Adding Media Servers
 
 1. Login as admin
-2. Navigate to **Settings → Servers**
-3. Click **"Add Server"**
+2. Navigate to **Management → Servers** (from the dropdown menu)
+3. Click **"Add New Server"**
 4. Configure:
    - Server name
    - Server type (Plex/Jellyfin/Emby)
-   - Server URL
-   - API credentials
+   - Server URL (e.g., https://plex.example.com)
+   - API Key/Token (from your media server)
+5. Click **"Test Connection"** to verify
+6. Click **"Add Server"** to save
 
-### Setting Up Local Users
+### Creating Staff/Support Users
 
-1. Navigate to **Users → Local Users**
-2. Click **"Create Local User"**
-3. Configure permissions per server:
-   - View users
-   - Manage server containers
-   - Terminate sessions
+1. Navigate to **Management → System Users** (admin only)
+2. Click **"Create User"**
+3. Configure:
+   - Username (case-insensitive)
+   - Password (min 8 characters)
+   - User Type (Staff or Support)
+   - Permissions (Staff users only):
+     - Select which servers they can access
+     - Set permissions per server (view sessions, terminate, etc.)
 
 ### Portainer Integration
 
-1. Navigate to **Settings → Integrations**
-2. Configure Portainer:
-   - Portainer URL
-   - API token (generate in Portainer)
-   - Endpoint ID
-3. Map servers to Docker containers
+1. Navigate to **Settings** (in top menu)
+2. Find the **Portainer Configuration** section
+3. Configure:
+   - Portainer URL (e.g., https://portainer.example.com)
+   - Username (your Portainer username)
+   - Password (your Portainer password)
+   - Endpoint ID (usually 1 for local, check Portainer)
+4. Click **"Save Settings"**
+5. Map servers to containers in the **Docker Container Mapping** section
 
 ### Performance & Caching
 
@@ -189,13 +208,19 @@ Cache status and manual refresh available in admin endpoints:
 - User management
 - Server management
 
-### Local User Permissions (Configurable)
-- **View Analytics**: Dashboard access
-- **View Sessions**: See active streams
+### Staff User Permissions (Configurable per Server)
+- **View Analytics**: Dashboard and analytics access
+- **View Sessions**: See active streaming sessions
 - **Terminate Sessions**: Stop active streams
 - **View Users**: See user lists
-- **Manage Servers**: Container control
-- Server-specific access control
+- **Manage Servers**: Container control (start/stop/restart)
+- Each permission can be set independently per server
+
+### Support User Permissions (Fixed)
+- View-only access to dashboard and analytics
+- Cannot modify any settings or terminate sessions
+- Cannot create or manage users
+- Ideal for help desk and monitoring roles
 
 ## 📊 API Documentation
 
