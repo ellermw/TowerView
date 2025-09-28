@@ -301,6 +301,25 @@ docker exec -i towerview-db-1 psql -U towerview towerview < backup.sql
 docker exec towerview-redis-1 redis-cli FLUSHALL
 ```
 
+## 📊 Code Quality Report
+
+### Latest Analysis (2025-09-27)
+A comprehensive code analysis has been performed identifying areas for improvement. Full details available in [CODE_ANALYSIS_REPORT.md](CODE_ANALYSIS_REPORT.md).
+
+**Summary:**
+- **Total Issues Found:** 47
+- **High Severity:** 8 (debug code, security, performance)
+- **Medium Severity:** 19 (optimization opportunities)
+- **Low Severity:** 20 (code quality improvements)
+- **Estimated Fix Timeline:** 4-6 weeks
+
+**Key Areas for Improvement:**
+- Remove 51+ console.log/print debug statements
+- Fix N+1 database query issues
+- Add missing database indexes
+- Implement React performance optimizations
+- Enhance error handling and security
+
 ## 📝 Changelog
 
 ### Version 2.2.0 (Current)
