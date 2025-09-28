@@ -296,7 +296,7 @@ async def authenticate_media_user(
         for server in matching_servers:
             try:
                 from ...providers.factory import ProviderFactory
-                provider = ProviderFactory.create_provider(server)
+                provider = ProviderFactory.create_provider(server, db)
                 logger.info(f"Trying Plex authentication on server: {server.name}")
 
                 auth_result = await provider.authenticate_user(
@@ -393,7 +393,7 @@ async def authenticate_media_user(
             try:
                 # Try to authenticate with this server
                 from ...providers.factory import ProviderFactory
-                provider = ProviderFactory.create_provider(server)
+                provider = ProviderFactory.create_provider(server, db)
                 logger.info(f"Trying authentication on server: {server.name} (ID: {server.id})")
 
                 auth_result = await provider.authenticate_user(
