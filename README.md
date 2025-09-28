@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-**Version 2.2.1 - Authentication System Update**
+**Version 2.2.2 - Media User Authentication Fixed**
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. The platform has been thoroughly tested and optimized for production use with excellent stability and performance.
 
@@ -58,16 +58,19 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 - Role promotion/demotion controls
 - Self-protection (cannot delete/demote own account)
 
-### Authentication Status
+### Authentication Methods
 
 **Staff Authentication**: ✅ Fully functional
 - Admin, Staff, and Support users can log in using the Staff tab
 - Complete access to all TowerView features based on role permissions
+- Role-based access control with hierarchical permissions
 
-**Media User Authentication**: ⚠️ Currently disabled
-- Direct authentication with Plex/Emby/Jellyfin accounts is under development
-- Users should use Staff credentials to access the platform
-- This feature will be re-enabled in a future release
+**Media User Authentication**: ✅ Now working!
+- **Plex**: Supports both direct username/password and OAuth authentication
+- **Emby**: Direct authentication with username and password
+- **Jellyfin**: Direct authentication with username and password
+- Smart server selection automatically matches users to their correct servers
+- Seamless login experience for media server users
 
 ## 🚀 Quick Start
 
@@ -314,7 +317,14 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.2.1 (Current)
+### Version 2.2.2 (Current)
+- **Media User Authentication Fixed**: All three providers now working
+- **Plex Enhancement**: Added direct username/password option alongside OAuth
+- **Emby/Jellyfin Fix**: Corrected authentication headers and methods
+- **Smart Server Selection**: Automatically matches users to correct servers
+- **Improved Error Handling**: Better logging and error messages
+
+### Version 2.2.1
 - **Authentication System Update**: Temporarily disabled media user authentication
 - **Improved Error Handling**: Clear messaging for authentication status
 - **Stability Fix**: Resolved "session expired" loop issues
