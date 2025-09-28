@@ -94,12 +94,12 @@ export default function UnifiedServerManagement() {
     }
   )
 
-  // Fetch user permissions for local users
+  // Fetch user permissions for non-admin users (staff and support)
   const { data: userPermissions = [] } = useQuery<UserPermission[]>(
     ['user-permissions', user?.id],
     () => api.get(`/admin/local-users/${user?.id}/permissions`).then(res => res.data),
     {
-      enabled: user?.type === 'local_user' && !!user?.id,
+      enabled: (user?.type === 'local_user' || user?.type === 'staff' || user?.type === 'support') && !!user?.id,
       onError: (error: any) => {
         console.error('Failed to fetch user permissions:', error)
       }

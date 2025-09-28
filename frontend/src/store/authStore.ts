@@ -5,7 +5,7 @@ interface User {
   id: number
   username: string
   email?: string
-  type: 'admin' | 'media_user' | 'local_user'
+  type: 'admin' | 'media_user' | 'local_user' | 'staff' | 'support'
   provider?: string
   server_id?: number
 }

@@ -6,9 +6,11 @@ from ..core.database import Base
 
 
 class UserType(enum.Enum):
-    admin = "admin"
-    local_user = "local_user"  # New type for locally created users with permissions
-    media_user = "media_user"
+    admin = "admin"  # Full access to all servers and all permissions
+    staff = "staff"  # Can manage specific servers, create support users (formerly local_user)
+    support = "support"  # Limited to view sessions, users, analytics only
+    local_user = "local_user"  # Deprecated, kept for migration compatibility
+    media_user = "media_user"  # Users from media servers
 
 
 class ProviderType(enum.Enum):

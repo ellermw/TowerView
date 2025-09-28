@@ -59,6 +59,7 @@ class LocalUserCreate(BaseModel):
     email: Optional[str] = None
     password: str = Field(..., min_length=8)
     must_change_password: bool = False
+    role: Optional[str] = None  # 'admin', 'staff', or 'support'
 
 
 class LocalUserUpdate(BaseModel):
@@ -66,6 +67,11 @@ class LocalUserUpdate(BaseModel):
     email: Optional[str] = None
     password: Optional[str] = Field(None, min_length=8)
     must_change_password: Optional[bool] = None
+
+
+class UserRoleUpdate(BaseModel):
+    """Schema for updating a user's role"""
+    role: str = Field(..., pattern="^(admin|staff|support)$")
 
 
 class UserPermissionSchema(BaseModel):

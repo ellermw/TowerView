@@ -94,19 +94,62 @@ async def get_current_media_user(current_user: User = Depends(get_current_user))
 
 
 async def get_current_local_user(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.type != UserType.local_user:
+    # Backward compatibility - treat local_user as staff
+    if current_user.type not in [UserType.local_user, UserType.staff]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Local user access required"
+            detail="Staff access required"
+        )
+    return current_user
+
+
+async def get_current_staff_user(current_user: User = Depends(get_current_user)) -> User:
+    """Get current staff user (can create support users, manage servers)"""
+    if current_user.type not in [UserType.admin, UserType.staff, UserType.local_user]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Staff access required"
+        )
+    return current_user
+
+
+async def get_current_staff_or_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Get current staff or admin user"""
+    if current_user.type not in [UserType.admin, UserType.staff, UserType.local_user]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Staff or Admin access required"
         )
     return current_user
 
 
 async def get_current_admin_or_local_user(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.type not in [UserType.admin, UserType.local_user]:
+    # Allow admin, staff (formerly local_user), and support users
+    if current_user.type not in [UserType.admin, UserType.staff, UserType.local_user, UserType.support]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin or local user access required"
+            detail="Authorized user access required"
+        )
+    return current_user
+
+
+async def get_user_creation_allowed(current_user: User = Depends(get_current_user)) -> User:
+    """Check if user can create other users"""
+    # Admin can create any user, Staff can create support users, Support cannot create users
+    if current_user.type not in [UserType.admin, UserType.staff, UserType.local_user]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User creation privileges required"
+        )
+    return current_user
+
+
+async def get_user_deletion_allowed(current_user: User = Depends(get_current_user)) -> User:
+    """Check if user can delete other users - only admins"""
+    if current_user.type != UserType.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can delete users"
         )
     return current_user
 

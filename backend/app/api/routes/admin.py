@@ -3,7 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
-from ...core.security import get_current_admin_user, get_current_admin_or_local_user
+from ...core.security import (
+    get_current_admin_user, get_current_admin_or_local_user,
+    get_user_creation_allowed, get_user_deletion_allowed
+)
 from ...models.user import User, UserType
 from ...models.server import Server
 from ...schemas.server import ServerCreate, ServerResponse, ServerUpdate
@@ -11,7 +14,7 @@ from ...schemas.session import SessionResponse, LiveSessionResponse
 from ...schemas.user import (
     UserResponse, ServerUserResponse, LocalUserCreate,
     LocalUserUpdate, LocalUserResponse, UserPermissionSchema,
-    UserPermissionUpdate
+    UserPermissionUpdate, UserRoleUpdate
 )
 from ...schemas.analytics import AnalyticsFilters, DashboardAnalyticsResponse
 from ...services.server_service import ServerService
@@ -758,12 +761,15 @@ async def get_analytics(
 
 @router.get("/local-users", response_model=List[LocalUserResponse])
 async def get_local_users(
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_or_local_user),
     db: Session = Depends(get_db)
 ):
-    """Get all local users"""
+    """Get all system users (non-media server users)"""
     from ...models.user import UserType
-    users = db.query(User).filter(User.type == UserType.local_user).all()
+    # Get all non-media users (admin, staff, support, and legacy local_user)
+    users = db.query(User).filter(
+        User.type.in_([UserType.admin, UserType.staff, UserType.support, UserType.local_user])
+    ).all()
     return users
 
 
@@ -771,10 +777,10 @@ async def get_local_users(
 async def create_local_user(
     user_data: LocalUserCreate,
     request: Request,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_user_creation_allowed),
     db: Session = Depends(get_db)
 ):
-    """Create a new local user"""
+    """Create a new user (role based on creator's permissions)"""
     from ...models.user import UserType
     from ...core.security import get_password_hash
 
@@ -787,9 +793,28 @@ async def create_local_user(
             detail="Username already exists"
         )
 
-    # Create new local user
+    # Determine what role the new user should have based on creator
+    new_user_type = UserType.support  # Default to support
+
+    if current_user.type == UserType.admin:
+        # Admin can create any role
+        if hasattr(user_data, 'role'):
+            if user_data.role == 'admin':
+                new_user_type = UserType.admin
+            elif user_data.role == 'staff':
+                new_user_type = UserType.staff
+            else:
+                new_user_type = UserType.support
+        else:
+            # Default to staff for backward compatibility
+            new_user_type = UserType.staff
+    elif current_user.type in [UserType.staff, UserType.local_user]:
+        # Staff can only create support users
+        new_user_type = UserType.support
+
+    # Create new user
     new_user = User(
-        type=UserType.local_user,
+        type=new_user_type,
         username=user_data.username,
         email=user_data.email,
         password_hash=get_password_hash(user_data.password),
@@ -878,14 +903,74 @@ async def update_local_user(
     return user
 
 
-@router.delete("/local-users/{user_id}")
-async def delete_local_user(
+@router.patch("/local-users/{user_id}/role", response_model=LocalUserResponse)
+async def update_user_role(
     user_id: int,
+    role_data: UserRoleUpdate,
     request: Request,
     current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
-    """Delete a local user"""
+    """Update a user's role (admin only)"""
+    from ...models.user import UserType
+
+    # Find the user
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.type.in_([UserType.admin, UserType.staff, UserType.support, UserType.local_user])
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Map role string to UserType
+    role_map = {
+        'admin': UserType.admin,
+        'staff': UserType.staff,
+        'support': UserType.support
+    }
+
+    new_role = role_map.get(role_data.role)
+    if not new_role:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid role"
+        )
+
+    # Update the role
+    user.type = new_role
+    db.commit()
+    db.refresh(user)
+
+    # Log the action
+    audit_service = AuditService(db)
+    await audit_service.log_action(
+        actor_id=current_user.id,
+        action="update_user_role",
+        target_type="user",
+        target_id=user.id,
+        details={
+            "user_id": user.id,
+            "old_role": user.type.value,
+            "new_role": new_role.value
+        },
+        ip_address=request.client.host
+    )
+
+    return user
+
+
+@router.delete("/local-users/{user_id}")
+async def delete_local_user(
+    user_id: int,
+    request: Request,
+    current_user: User = Depends(get_user_deletion_allowed),
+    db: Session = Depends(get_db)
+):
+    """Delete a user (admin only)"""
     from ...models.user import UserType
     from ...models.user_permission import UserPermission
     from ...models.session import Session
@@ -893,7 +978,7 @@ async def delete_local_user(
 
     user = db.query(User).filter(
         User.id == user_id,
-        User.type == UserType.local_user
+        User.type.in_([UserType.staff, UserType.support, UserType.local_user])
     ).first()
 
     if not user:

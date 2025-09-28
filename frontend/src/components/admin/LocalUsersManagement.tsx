@@ -5,9 +5,7 @@ import {
   PlusIcon,
   PencilIcon,
   TrashIcon,
-  ShieldCheckIcon,
-  XMarkIcon,
-  CheckIcon
+  ShieldCheckIcon
 } from '@heroicons/react/24/outline'
 import api from '../../services/api'
 
@@ -21,6 +19,18 @@ interface LocalUser {
   updated_at: string
   permissions: UserPermission[]
 }
+
+interface UserRole {
+  value: string
+  label: string
+  description: string
+}
+
+const USER_ROLES: UserRole[] = [
+  { value: 'admin', label: 'Admin', description: 'Full access to all servers and can create any user type' },
+  { value: 'staff', label: 'Staff', description: 'Can create Support accounts and manage assigned servers' },
+  { value: 'support', label: 'Support', description: 'View-only access to assigned servers' }
+]
 
 interface UserPermission {
   server_id: number
@@ -43,15 +53,24 @@ export default function LocalUsersManagement() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false)
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<LocalUser | null>(null)
+  const [selectedRole, setSelectedRole] = useState<string>('')
   const [localPermissions, setLocalPermissions] = useState<UserPermission[]>([])
   const [formData, setFormData] = useState({
     username: '',
     email: '',
     password: '',
     confirmPassword: '',
-    must_change_password: false
+    must_change_password: false,
+    role: 'support' as string
   })
+
+  // Get current user to determine permissions
+  const { data: currentUser } = useQuery(
+    'current-user',
+    () => api.get('/users/me').then(res => res.data)
+  )
 
   const { data: users = [], isLoading } = useQuery<LocalUser[]>(
     'local-users',
@@ -61,6 +80,22 @@ export default function LocalUsersManagement() {
   const { data: servers = [] } = useQuery<Server[]>(
     'servers',
     () => api.get('/admin/servers').then(res => res.data)
+  )
+
+  const updateRoleMutation = useMutation(
+    ({ id, role }: { id: number; role: string }) =>
+      api.patch(`/admin/local-users/${id}/role`, { role }),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries('local-users')
+        setIsRoleModalOpen(false)
+        setSelectedUser(null)
+        setSelectedRole('')
+      },
+      onError: (error: any) => {
+        alert(error.response?.data?.detail || 'Failed to update role')
+      }
+    }
   )
 
   const createUserMutation = useMutation(
@@ -178,7 +213,8 @@ export default function LocalUsersManagement() {
       email: '',
       password: '',
       confirmPassword: '',
-      must_change_password: false
+      must_change_password: false,
+      role: 'support'
     })
     setSelectedUser(null)
   }
@@ -193,7 +229,8 @@ export default function LocalUsersManagement() {
       username: formData.username,
       email: formData.email || null,
       password: formData.password,
-      must_change_password: formData.must_change_password
+      must_change_password: formData.must_change_password,
+      role: formData.role
     })
   }
 
@@ -231,7 +268,8 @@ export default function LocalUsersManagement() {
       email: user.email || '',
       password: '',
       confirmPassword: '',
-      must_change_password: user.must_change_password
+      must_change_password: user.must_change_password,
+      role: user.type
     })
     setIsEditModalOpen(true)
   }
@@ -241,6 +279,40 @@ export default function LocalUsersManagement() {
     setLocalPermissions([...user.permissions])
     setIsPermissionsModalOpen(true)
   }
+
+  const openRoleModal = (user: LocalUser) => {
+    setSelectedUser(user)
+    setSelectedRole(user.type)
+    setIsRoleModalOpen(true)
+  }
+
+  const handleUpdateRole = () => {
+    if (!selectedUser || !selectedRole) return
+    updateRoleMutation.mutate({ id: selectedUser.id, role: selectedRole })
+  }
+
+  const getRoleBadge = (type: string) => {
+    switch (type) {
+      case 'admin':
+        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+      case 'staff':
+      case 'local_user': // Handle legacy type
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+      case 'support':
+        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+      default:
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
+    }
+  }
+
+  const getRoleLabel = (type: string) => {
+    if (type === 'local_user') return 'Staff' // Handle legacy type
+    return USER_ROLES.find(r => r.value === type)?.label || type
+  }
+
+  const canCreateUser = currentUser?.type === 'admin' || currentUser?.type === 'staff' || currentUser?.type === 'local_user'
+  const canDeleteUser = currentUser?.type === 'admin'
+  const canChangeRole = currentUser?.type === 'admin'
 
   const hasPermissionForServer = (serverId: number) => {
     return localPermissions.some(p => p.server_id === serverId)
@@ -315,20 +387,22 @@ export default function LocalUsersManagement() {
       <div className="sm:flex sm:items-center">
         <div className="sm:flex-auto">
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-            Local User Management
+            System Users
           </h1>
           <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-            Create and manage local users with specific server permissions
+            Manage all system users including administrators, staff, and support accounts
           </p>
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-          <button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="btn btn-primary"
-          >
-            <PlusIcon className="h-5 w-5 mr-2" />
-            Create User
-          </button>
+          {canCreateUser && (
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="btn btn-primary"
+            >
+              <PlusIcon className="h-5 w-5 mr-2" />
+              Create User
+            </button>
+          )}
         </div>
       </div>
 
@@ -338,10 +412,10 @@ export default function LocalUsersManagement() {
             <div className="card-body text-center py-12">
               <UserIcon className="mx-auto h-12 w-12 text-slate-400" />
               <h3 className="mt-2 text-sm font-medium text-slate-900 dark:text-white">
-                No local users
+                No users found
               </h3>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Get started by creating a new local user.
+                {canCreateUser ? 'Get started by creating a new user.' : 'No users have been created yet.'}
               </p>
             </div>
           </div>
@@ -353,6 +427,9 @@ export default function LocalUsersManagement() {
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       User
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Role
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Email
@@ -385,13 +462,24 @@ export default function LocalUsersManagement() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
+                        <button
+                          onClick={() => (canChangeRole && user.id !== currentUser?.id) ? openRoleModal(user) : null}
+                          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getRoleBadge(user.type)} ${
+                            (canChangeRole && user.id !== currentUser?.id) ? 'cursor-pointer hover:opacity-80' : 'cursor-default'
+                          }`}
+                          title={(canChangeRole && user.id !== currentUser?.id) ? 'Click to change role' : (user.id === currentUser?.id ? 'Cannot change your own role' : '')}
+                        >
+                          {getRoleLabel(user.type)}
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-slate-900 dark:text-white">
                           {user.email || '-'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-slate-900 dark:text-white">
-                          {user.permissions.length} server{user.permissions.length !== 1 ? 's' : ''}
+                          {user.type === 'admin' ? 'All servers' : `${user.permissions.length} server${user.permissions.length !== 1 ? 's' : ''}`}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -410,8 +498,10 @@ export default function LocalUsersManagement() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button
-                          onClick={() => openPermissionsModal(user)}
-                          className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 mr-4"
+                          onClick={() => user.type !== 'admin' ? openPermissionsModal(user) : null}
+                          className={`mr-4 ${user.type !== 'admin' ? 'text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300' : 'text-gray-400 cursor-not-allowed'}`}
+                          title={user.type === 'admin' ? 'Admins have all permissions' : 'Manage permissions'}
+                          disabled={user.type === 'admin'}
                         >
                           <ShieldCheckIcon className="h-5 w-5" />
                         </button>
@@ -421,12 +511,15 @@ export default function LocalUsersManagement() {
                         >
                           <PencilIcon className="h-5 w-5" />
                         </button>
-                        <button
-                          onClick={() => handleDeleteUser(user)}
-                          className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                        >
-                          <TrashIcon className="h-5 w-5" />
-                        </button>
+                        {(canDeleteUser && user.id !== currentUser?.id) && (
+                          <button
+                            onClick={() => handleDeleteUser(user)}
+                            className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                            title="Delete user"
+                          >
+                            <TrashIcon className="h-5 w-5" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -442,7 +535,7 @@ export default function LocalUsersManagement() {
         <div className="fixed inset-0 bg-slate-500 bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-75 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md">
             <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-4">
-              Create Local User
+              Create User
             </h2>
             <div className="space-y-4">
               <div>
@@ -501,6 +594,24 @@ export default function LocalUsersManagement() {
                   Must change password on first login
                 </label>
               </div>
+              {currentUser?.type === 'admin' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Role
+                  </label>
+                  <select
+                    value={formData.role}
+                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                    className="mt-1 block w-full border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-slate-700 dark:text-white"
+                  >
+                    {USER_ROLES.map(role => (
+                      <option key={role.value} value={role.value}>
+                        {role.label} - {role.description}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
             <div className="mt-6 flex justify-end space-x-3">
               <button
@@ -587,6 +698,65 @@ export default function LocalUsersManagement() {
                 className="btn btn-primary"
               >
                 Update User
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Role Change Modal */}
+      {isRoleModalOpen && selectedUser && (
+        <div className="fixed inset-0 bg-slate-500 bg-opacity-75 dark:bg-slate-900 dark:bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-medium text-slate-900 dark:text-white mb-4">
+              Change Role: {selectedUser.username}
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Select new role
+                </label>
+                {USER_ROLES.map(role => (
+                  <label key={role.value} className="flex items-start mb-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      value={role.value}
+                      checked={selectedRole === role.value}
+                      onChange={(e) => setSelectedRole(e.target.value)}
+                      className="mt-1 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                    />
+                    <div className="ml-3">
+                      <span className="block text-sm font-medium text-slate-900 dark:text-white">
+                        {role.label}
+                      </span>
+                      <span className="block text-xs text-slate-500 dark:text-slate-400">
+                        {role.description}
+                      </span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              {selectedRole === 'admin' && selectedUser.type !== 'admin' && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-md">
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    <strong>Warning:</strong> Promoting to Admin grants full system access including the ability to delete users and servers.
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="mt-6 flex justify-end space-x-3">
+              <button
+                onClick={() => { setIsRoleModalOpen(false); setSelectedUser(null); setSelectedRole(''); }}
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdateRole}
+                disabled={updateRoleMutation.isLoading || selectedRole === selectedUser.type}
+                className="btn btn-primary"
+              >
+                {updateRoleMutation.isLoading ? 'Updating...' : 'Update Role'}
               </button>
             </div>
           </div>
