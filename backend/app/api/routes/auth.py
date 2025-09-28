@@ -141,9 +141,14 @@ async def authenticate_media_user(
 ):
     """Authenticate user with their media server"""
 
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Media authentication request: provider={auth_data.provider}, username={auth_data.username}, has_token={bool(auth_data.auth_token)}")
+
     # Find matching servers in our database
     if auth_data.provider == "plex" and auth_data.auth_token:
         # Plex OAuth authentication
+        logger.info("Processing Plex OAuth authentication")
         # Get user's Plex servers
         async with httpx.AsyncClient() as client:
             servers_response = await client.get(
@@ -225,24 +230,145 @@ async def authenticate_media_user(
                 detail="Your Plex account is not associated with any servers in this system"
             )
 
+    elif auth_data.provider == "plex" and auth_data.username and auth_data.password:
+        # Plex direct username/password authentication (fallback from OAuth)
+        logger.info("Processing Plex direct authentication")
+
+        # Use smart server selection for Plex too
+        from ...services.users_cache_service import users_cache_service
+        cached_users = users_cache_service.get_cached_users()
+
+        matching_servers = []
+        if cached_users:
+            for server_id, users_list in cached_users.items():
+                for user in users_list:
+                    if user.get('username', '').lower() == auth_data.username.lower():
+                        server = db.query(Server).filter(
+                            Server.id == server_id,
+                            Server.type == ServerType.plex,
+                            Server.enabled == True
+                        ).first()
+                        if server and server not in matching_servers:
+                            logger.info(f"Smart match: Found Plex user '{auth_data.username}' on server '{server.name}'")
+                            matching_servers.insert(0, server)
+                        break
+
+        # Add all other Plex servers as fallback
+        all_plex_servers = db.query(Server).filter(
+            Server.type == ServerType.plex,
+            Server.enabled == True
+        ).all()
+        for server in all_plex_servers:
+            if server not in matching_servers:
+                matching_servers.append(server)
+
+        if not matching_servers:
+            raise HTTPException(status_code=404, detail="No Plex servers are configured")
+
+        # Try authentication against each server
+        for server in matching_servers:
+            try:
+                from ...providers.factory import ProviderFactory
+                provider = ProviderFactory.create_provider(server)
+                logger.info(f"Trying Plex authentication on server: {server.name}")
+
+                auth_result = await provider.authenticate_user(
+                    auth_data.username,
+                    auth_data.password
+                )
+
+                if auth_result:
+                    # Similar user creation/update logic as above
+                    provider_user_id = auth_result.get("user_id")
+                    user_email = auth_result.get("email")
+
+                    user = db.query(User).filter(
+                        User.provider_user_id == provider_user_id,
+                        User.server_id == server.id,
+                        User.type == UserType.media_user
+                    ).first()
+
+                    if not user:
+                        user = User(
+                            type=UserType.media_user,
+                            provider="plex",
+                            provider_user_id=provider_user_id,
+                            server_id=server.id,
+                            username=auth_data.username,
+                            email=user_email
+                        )
+                        db.add(user)
+                    else:
+                        user.username = auth_data.username
+                        user.email = user_email
+
+                    user.last_login_at = datetime.utcnow()
+                    db.commit()
+                    db.refresh(user)
+
+                    AuditService.log_login(db, user, request)
+                    auth_service = AuthService(db)
+                    logger.info(f"Plex authentication successful for user '{auth_data.username}'")
+                    return auth_service.create_tokens(user)
+            except Exception as e:
+                logger.warning(f"Plex authentication failed on server '{server.name}': {str(e)}")
+                continue
+
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication failed. Please check your Plex username and password."
+        )
+
     elif auth_data.provider in ["emby", "jellyfin"]:
-        # For Emby/Jellyfin, try to authenticate with each enabled server
-        servers = db.query(Server).filter(
+        # Smart server selection - check users cache first
+
+        from ...services.users_cache_service import users_cache_service
+        cached_users = users_cache_service.get_cached_users()
+
+        # Find servers where this username exists
+        matching_servers = []
+        if cached_users:
+            for server_id, users_list in cached_users.items():
+                # Check if username exists in this server's user list
+                for user in users_list:
+                    if user.get('username', '').lower() == auth_data.username.lower():
+                        # Found a match - prioritize this server
+                        server = db.query(Server).filter(
+                            Server.id == server_id,
+                            Server.type == (ServerType.emby if auth_data.provider == "emby" else ServerType.jellyfin),
+                            Server.enabled == True
+                        ).first()
+                        if server and server not in matching_servers:
+                            logger.info(f"Smart match: Found user '{auth_data.username}' on server '{server.name}' (ID: {server.id})")
+                            matching_servers.insert(0, server)  # Priority server
+                        break
+
+        # Get all servers of this type as fallback
+        all_servers = db.query(Server).filter(
             Server.type == (ServerType.emby if auth_data.provider == "emby" else ServerType.jellyfin),
             Server.enabled == True
         ).all()
 
-        if not servers:
+        # Add remaining servers that weren't in the priority list
+        for server in all_servers:
+            if server not in matching_servers:
+                matching_servers.append(server)
+
+        if not matching_servers:
             raise HTTPException(
                 status_code=404,
                 detail=f"No {auth_data.provider.title()} servers are configured"
             )
 
-        for server in servers:
+        logger.info(f"Attempting authentication for '{auth_data.username}' against {len(matching_servers)} servers (prioritized)")
+
+        for server in matching_servers:
             try:
                 # Try to authenticate with this server
                 from ...providers.factory import ProviderFactory
                 provider = ProviderFactory.create_provider(server)
+                logger.info(f"Trying authentication on server: {server.name} (ID: {server.id})")
+
                 auth_result = await provider.authenticate_user(
                     auth_data.username,
                     auth_data.password
@@ -283,14 +409,16 @@ async def authenticate_media_user(
 
                     # Create tokens
                     auth_service = AuthService(db)
+                    logger.info(f"Authentication successful for user '{auth_data.username}' on server '{server.name}'")
                     return auth_service.create_tokens(user)
-            except:
-                # Try next server
+            except Exception as e:
+                # Log the error and try next server
+                logger.warning(f"Authentication failed on server '{server.name}': {str(e)}")
                 continue
 
         raise HTTPException(
             status_code=401,
-            detail=f"Invalid {auth_data.provider.title()} credentials or no accessible servers"
+            detail=f"Authentication failed. Please check your {auth_data.provider.title()} username and password."
         )
 
     else:

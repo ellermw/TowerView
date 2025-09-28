@@ -156,51 +156,46 @@ export default function LoginPage() {
           {loginType === 'user' ? (
             // Media user authentication options
             <div className="space-y-4">
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
-                <p className="text-sm text-amber-800 dark:text-amber-300 text-center">
-                  Media user authentication is currently under development.
-                </p>
-                <p className="text-xs text-amber-700 dark:text-amber-400 text-center mt-2">
-                  Please use the Staff login option to access the platform.
-                </p>
-              </div>
+              <p className="text-sm text-slate-600 dark:text-slate-400 text-center">
+                Select your media server to sign in:
+              </p>
 
-              <div className="grid grid-cols-3 gap-3 opacity-50 pointer-events-none">
+              <div className="grid grid-cols-3 gap-3">
                 <button
                   type="button"
-                  disabled
-                  className="flex flex-col items-center justify-center p-4 border-2 border-slate-200 dark:border-slate-700 rounded-lg"
+                  onClick={() => setSelectedProvider('plex')}
+                  className="flex flex-col items-center justify-center p-4 border-2 border-slate-200 dark:border-slate-700 rounded-lg hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-slate-700 transition-colors"
                 >
                   <img
                     src="/plex.png"
                     alt="Plex"
-                    className="w-12 h-12 mb-2 object-contain grayscale"
+                    className="w-12 h-12 mb-2 object-contain"
                   />
                   <span className="text-sm font-medium">Plex</span>
                 </button>
 
                 <button
                   type="button"
-                  disabled
-                  className="flex flex-col items-center justify-center p-4 border-2 border-slate-200 dark:border-slate-700 rounded-lg"
+                  onClick={() => setSelectedProvider('emby')}
+                  className="flex flex-col items-center justify-center p-4 border-2 border-slate-200 dark:border-slate-700 rounded-lg hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-slate-700 transition-colors"
                 >
                   <img
                     src="/emby.png"
                     alt="Emby"
-                    className="w-12 h-12 mb-2 object-contain grayscale"
+                    className="w-12 h-12 mb-2 object-contain"
                   />
                   <span className="text-sm font-medium">Emby</span>
                 </button>
 
                 <button
                   type="button"
-                  disabled
-                  className="flex flex-col items-center justify-center p-4 border-2 border-slate-200 dark:border-slate-700 rounded-lg"
+                  onClick={() => setSelectedProvider('jellyfin')}
+                  className="flex flex-col items-center justify-center p-4 border-2 border-slate-200 dark:border-slate-700 rounded-lg hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-slate-700 transition-colors"
                 >
                   <img
                     src="/jellyfin.png"
                     alt="Jellyfin"
-                    className="w-12 h-12 mb-2 object-contain grayscale"
+                    className="w-12 h-12 mb-2 object-contain"
                   />
                   <span className="text-sm font-medium">Jellyfin</span>
                 </button>
