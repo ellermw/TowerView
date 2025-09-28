@@ -54,20 +54,32 @@ class EmbyProvider(BaseProvider):
         """Authenticate user with Emby"""
         try:
             async with httpx.AsyncClient() as client:
+                # Emby authentication doesn't require API key for initial auth
                 auth_data = {
                     "Username": username,
                     "Password": password,
                     "Pw": password  # Some Emby versions use Pw instead
                 }
 
+                # Add client identification headers
+                headers = {
+                    "X-Emby-Client": "TowerView",
+                    "X-Emby-Device-Name": "TowerView",
+                    "X-Emby-Device-Id": "towerview-auth",
+                    "X-Emby-Client-Version": "1.0.0",
+                    "Content-Type": "application/json"
+                }
+
+                # Try authentication without API key first (for user auth)
                 response = await client.post(
                     f"{self.base_url}/Users/AuthenticateByName",
                     json=auth_data,
-                    headers={"X-Emby-Token": self.api_key},
+                    headers=headers,
                     timeout=10.0
                 )
 
                 if response.status_code != 200:
+                    print(f"Emby auth failed: {response.status_code} - {response.text}")
                     return None
 
                 data = response.json()
@@ -80,7 +92,8 @@ class EmbyProvider(BaseProvider):
                     "token": data.get("AccessToken")
                 }
 
-        except Exception:
+        except Exception as e:
+            print(f"Emby authentication error: {str(e)}")
             return None
 
     async def list_active_sessions(self) -> List[Dict[str, Any]]:

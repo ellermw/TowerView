@@ -142,53 +142,71 @@ export default function MediaLoginModal({ isOpen, onClose, provider, onSuccess }
 
           {provider === 'plex' ? (
             <div className="space-y-4">
-              {plexPinCode ? (
-                <>
-                  <div className="text-center space-y-4">
-                    {!plexAuthOpened ? (
-                      <>
-                        <p className="text-sm text-slate-600 dark:text-slate-400">
-                          Click the button below to sign in with your Plex account
-                        </p>
+              {/* Option to use username/password for Plex */}
+              <div className="text-center">
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                  Sign in with your Plex account
+                </p>
+              </div>
 
-                        <button
-                          onClick={openPlexAuth}
-                          className="btn-primary w-full"
-                        >
-                          Sign in with Plex
-                        </button>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Username or Email
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="input"
+                  placeholder="Enter your Plex username or email"
+                />
+              </div>
 
-                        <p className="text-xs text-slate-500 dark:text-slate-500">
-                          A new window will open for Plex authorization
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-sm text-slate-600 dark:text-slate-400">
-                          Complete the authorization in the Plex window
-                        </p>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="input"
+                  placeholder="Enter your Plex password"
+                />
+              </div>
 
-                        <div className="flex items-center justify-center space-x-2">
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-500"></div>
-                          <span className="text-sm text-slate-600 dark:text-slate-400">
-                            Waiting for authorization...
-                          </span>
-                        </div>
+              <button
+                onClick={handleDirectAuth}
+                disabled={loading || !username || !password}
+                className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Signing in...' : 'Sign in'}
+              </button>
 
-                        <button
-                          onClick={openPlexAuth}
-                          className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
-                        >
-                          Didn't work? Try again
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="flex justify-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-200 dark:border-slate-700" />
                 </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white dark:bg-slate-800 px-2 text-slate-500">Or</span>
+                </div>
+              </div>
+
+              {plexPinCode ? (
+                <button
+                  onClick={openPlexAuth}
+                  className="btn-secondary w-full"
+                >
+                  Sign in with Plex OAuth
+                </button>
+              ) : (
+                <button
+                  onClick={initiatePlexOAuth}
+                  disabled={loading}
+                  className="btn-secondary w-full disabled:opacity-50"
+                >
+                  {loading ? 'Initializing...' : 'Use Plex OAuth instead'}
+                </button>
               )}
             </div>
           ) : (

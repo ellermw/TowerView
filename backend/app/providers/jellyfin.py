@@ -45,19 +45,31 @@ class JellyfinProvider(BaseProvider):
         """Authenticate user with Jellyfin"""
         try:
             async with httpx.AsyncClient() as client:
+                # Jellyfin authentication doesn't require API key for initial auth
                 auth_data = {
                     "Username": username,
-                    "Pw": password
+                    "Pw": password  # Jellyfin uses "Pw" field
                 }
 
+                # Add client identification headers
+                headers = {
+                    "X-Emby-Client": "TowerView",
+                    "X-Emby-Device-Name": "TowerView",
+                    "X-Emby-Device-Id": "towerview-auth",
+                    "X-Emby-Client-Version": "1.0.0",
+                    "Content-Type": "application/json"
+                }
+
+                # Try authentication without API key first (for user auth)
                 response = await client.post(
                     f"{self.base_url}/Users/AuthenticateByName",
                     json=auth_data,
-                    headers={"Authorization": f"MediaBrowser Token={self.api_key}"},
+                    headers=headers,
                     timeout=10.0
                 )
 
                 if response.status_code != 200:
+                    print(f"Jellyfin auth failed: {response.status_code} - {response.text}")
                     return None
 
                 data = response.json()
@@ -70,7 +82,8 @@ class JellyfinProvider(BaseProvider):
                     "token": data.get("AccessToken")
                 }
 
-        except Exception:
+        except Exception as e:
+            print(f"Jellyfin authentication error: {str(e)}")
             return None
 
     async def list_active_sessions(self) -> List[Dict[str, Any]]:
