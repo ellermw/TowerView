@@ -53,15 +53,20 @@ async def initiate_plex_oauth():
                 "X-Plex-Platform": "Web",
                 "Accept": "application/json"
             },
-            json={"strong": True}  # Request a strong PIN
+            json={
+                "strong": True,  # Request a strong PIN
+                "trusted": True  # Mark as trusted application for better performance
+            }
         )
 
         if response.status_code != 201:
             raise HTTPException(status_code=400, detail="Failed to initiate OAuth flow")
 
         data = response.json()
-        # Use the simpler Plex OAuth URL that definitely works
-        auth_app_url = f"https://app.plex.tv/auth#?clientID={client_id}&code={data['code']}"
+
+        # Create a more robust auth URL with context parameter to help with redirect handling
+        # This provides better user experience by allowing Plex to know the context
+        auth_app_url = f"https://app.plex.tv/auth#?clientID={client_id}&code={data['code']}&context%5Bdevice%5D%5Bproduct%5D=TowerView"
 
         return PlexOAuthInitResponse(
             pin_id=str(data["id"]),
@@ -76,6 +81,7 @@ async def initiate_plex_oauth():
 async def check_plex_oauth(request: PlexOAuthCompleteRequest):
     """Check if Plex OAuth is complete"""
     import logging
+    from datetime import datetime, timezone
     logger = logging.getLogger(__name__)
 
     async with httpx.AsyncClient() as client:
@@ -87,15 +93,36 @@ async def check_plex_oauth(request: PlexOAuthCompleteRequest):
             }
         )
 
+        if response.status_code == 404:
+            logger.error(f"PIN not found or expired: {request.pin_id}")
+            raise HTTPException(status_code=404, detail="PIN not found or expired. Please restart the authentication process.")
+
         if response.status_code != 200:
             logger.error(f"Failed to check PIN: {response.status_code} - {response.text}")
-            raise HTTPException(status_code=400, detail="Invalid PIN ID")
+            raise HTTPException(status_code=400, detail="Failed to check authentication status")
 
         data = response.json()
         auth_token = data.get("authToken")
+        expires_at = data.get("expiresAt")
+        errors = data.get("errors", [])
+
+        # Check if PIN has expired
+        if expires_at:
+            try:
+                expiry_time = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+                if datetime.now(timezone.utc) > expiry_time:
+                    logger.error(f"PIN has expired: {request.pin_id}")
+                    raise HTTPException(status_code=410, detail="Authentication PIN has expired. Please restart the authentication process.")
+            except ValueError:
+                logger.warning(f"Could not parse expiry time: {expires_at}")
+
+        # Check for any errors from Plex
+        if errors:
+            logger.error(f"Plex PIN errors: {errors}")
+            raise HTTPException(status_code=400, detail=f"Authentication error: {', '.join(str(e) for e in errors)}")
 
         # Log the response for debugging
-        logger.info(f"Plex PIN check response - Has token: {bool(auth_token)}, Errors: {data.get('errors')}")
+        logger.info(f"Plex PIN check response - Has token: {bool(auth_token)}, Errors: {errors}")
 
         if auth_token:
             # Get user's accessible servers

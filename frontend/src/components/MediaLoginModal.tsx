@@ -63,8 +63,25 @@ export default function MediaLoginModal({ isOpen, onClose, provider, onSuccess }
             onSuccess(authResponse.data)
             // Don't close the modal - let onSuccess handle navigation
           }
-        } catch (error) {
-          // Continue polling
+        } catch (error: any) {
+          // Handle specific error cases
+          if (error.response?.status === 404 || error.response?.status === 410) {
+            // PIN expired or not found
+            setCheckingPlex(false)
+            setPlexAuthOpened(false)
+            toast.error(error.response?.data?.detail || 'Authentication PIN has expired. Please try again.')
+            // Reset OAuth state to allow restart
+            setPlexPinId('')
+            setPlexPinCode('')
+            setPlexAuthUrl('')
+            setPlexClientId('')
+          } else if (error.response?.status === 400) {
+            // Other authentication errors
+            setCheckingPlex(false)
+            setPlexAuthOpened(false)
+            toast.error(error.response?.data?.detail || 'Authentication failed. Please try again.')
+          }
+          // For other errors, continue polling
         }
       }, 2000) // Check every 2 seconds
     }
@@ -193,12 +210,26 @@ export default function MediaLoginModal({ isOpen, onClose, provider, onSuccess }
               </div>
 
               {plexPinCode ? (
-                <button
-                  onClick={openPlexAuth}
-                  className="btn-secondary w-full"
-                >
-                  Sign in with Plex OAuth
-                </button>
+                <div className="space-y-2">
+                  {checkingPlex && plexAuthOpened ? (
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                      <p className="text-sm text-slate-600 dark:text-slate-400">
+                        Waiting for Plex authorization...
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-500">
+                        Complete the authorization in the Plex tab, then return here
+                      </p>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={openPlexAuth}
+                      className="btn-secondary w-full"
+                    >
+                      Sign in with Plex OAuth
+                    </button>
+                  )}
+                </div>
               ) : (
                 <button
                   onClick={initiatePlexOAuth}

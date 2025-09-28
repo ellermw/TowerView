@@ -46,11 +46,10 @@ class JellyfinProvider(BaseProvider):
         try:
             async with httpx.AsyncClient(verify=False) as client:
                 # Jellyfin authentication doesn't require API key for initial auth
-                # Try both field names as different Jellyfin versions may differ
+                # Modern Jellyfin uses only Username and Pw fields
                 auth_data = {
                     "Username": username,
-                    "Pw": password,  # Some versions use "Pw"
-                    "Password": password  # Others use "Password"
+                    "Pw": password
                 }
 
                 # Add client identification headers
