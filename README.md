@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-**Version 2.2.0 - Enhanced Role Management & Security**
+**Version 2.2.1 - Authentication System Update**
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. The platform has been thoroughly tested and optimized for production use with excellent stability and performance.
 
@@ -57,6 +57,17 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 - Case-insensitive usernames for better UX
 - Role promotion/demotion controls
 - Self-protection (cannot delete/demote own account)
+
+### Authentication Status
+
+**Staff Authentication**: ✅ Fully functional
+- Admin, Staff, and Support users can log in using the Staff tab
+- Complete access to all TowerView features based on role permissions
+
+**Media User Authentication**: ⚠️ Currently disabled
+- Direct authentication with Plex/Emby/Jellyfin accounts is under development
+- Users should use Staff credentials to access the platform
+- This feature will be re-enabled in a future release
 
 ## 🚀 Quick Start
 
@@ -303,7 +314,13 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.2.0 (Current)
+### Version 2.2.1 (Current)
+- **Authentication System Update**: Temporarily disabled media user authentication
+- **Improved Error Handling**: Clear messaging for authentication status
+- **Stability Fix**: Resolved "session expired" loop issues
+- **User Guidance**: Updated login page to direct users to Staff authentication
+
+### Version 2.2.0
 - **New Role System**: Implemented hierarchical roles (Admin > Staff > Support)
 - **Role Management**: Admins can now promote/demote users between roles
 - **Enhanced Security**: Added self-protection against accidental account deletion
