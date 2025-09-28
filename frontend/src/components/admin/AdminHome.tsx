@@ -1058,17 +1058,24 @@ export default function AdminHome() {
                                                       </p>
                                                     )}
                                                   </div>
-                                                  <button
-                                                    onClick={() => terminateSessionMutation.mutate({
-                                                      serverId: session.server_id!,
-                                                      sessionId: session.session_id
-                                                    })}
-                                                    disabled={terminateSessionMutation.isLoading}
-                                                    className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                                                    title="Terminate Session"
-                                                  >
-                                                    <XMarkIcon className="w-3 h-3" />
-                                                  </button>
+                                                  {/* Show terminate button for:
+                                                     1. Admins and staff with terminate permission (all sessions)
+                                                     2. Media users (only their own sessions) */}
+                                                  {(isAdmin || hasPermission('terminate_sessions') ||
+                                                    (currentUser?.type === 'media_user' &&
+                                                     session.username?.toLowerCase() === currentUser?.username?.toLowerCase())) && (
+                                                    <button
+                                                      onClick={() => terminateSessionMutation.mutate({
+                                                        serverId: session.server_id!,
+                                                        sessionId: session.session_id
+                                                      })}
+                                                      disabled={terminateSessionMutation.isLoading}
+                                                      className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                                                      title="Terminate Session"
+                                                    >
+                                                      <XMarkIcon className="w-3 h-3" />
+                                                    </button>
+                                                  )}
                                                 </div>
 
                                                 <div className="space-y-2 text-xs text-slate-600 dark:text-slate-400">

@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...core.security import (
     get_current_admin_user, get_current_admin_or_local_user,
-    get_user_creation_allowed, get_user_deletion_allowed
+    get_user_creation_allowed, get_user_deletion_allowed,
+    get_current_user
 )
 from ...models.user import User, UserType
 from ...models.server import Server
@@ -20,6 +21,7 @@ from ...schemas.analytics import AnalyticsFilters, DashboardAnalyticsResponse
 from ...services.server_service import ServerService
 from ...services.analytics_service import AnalyticsService
 from ...services.audit_service import AuditService
+from ...services.user_service import UserService
 from ...providers.factory import ProviderFactory
 from ...models.playback_analytics import PlaybackEvent
 from datetime import datetime
@@ -493,22 +495,73 @@ async def terminate_session(
     server_id: int,
     session_id: str,
     request: Request,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_user),  # Changed to allow all authenticated users
     db: Session = Depends(get_db)
 ):
     """Terminate a specific session"""
     server_service = ServerService(db)
     server = server_service.get_server_by_id(server_id)
 
-    if not server or server.owner_id != current_user.id:
+    # Check if server exists and user has access
+    if not server:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Server not found"
         )
 
+    # For admin users, check owner
+    if current_user.type == UserType.admin:
+        if server.owner_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Server not found"
+            )
+    # For media users, check if they can see this server
+    elif current_user.type == UserType.media_user:
+        if not server.visible_to_media_users:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this server"
+            )
+    # For local/staff/support users, check permissions
+    elif current_user.type in [UserType.local_user, UserType.staff, UserType.support]:
+        user_service = UserService(db)
+        server_permission = user_service.get_user_server_permission(current_user.id, server_id)
+        if not server_permission or not server_permission.can_manage_server:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to terminate sessions on this server"
+            )
+
     try:
         print(f"Attempting to terminate session {session_id} on server {server_id} ({server.name})")
         provider = ProviderFactory.create_provider(server, db)
+
+        # For media users, verify they're terminating their own session
+        if current_user.type == UserType.media_user:
+            sessions = await provider.get_current_sessions()
+            session_found = False
+            session_username = None
+
+            for session in sessions:
+                if session.get("Id") == session_id or session.get("session_id") == session_id:
+                    session_username = session.get("UserName", session.get("username", ""))
+                    session_found = True
+                    break
+
+            if not session_found:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Session not found"
+                )
+
+            # Check if it's their session
+            if session_username.lower() != current_user.username.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You can only terminate your own sessions"
+                )
+
         success = await provider.terminate_session(session_id)
         print(f"Termination result for session {session_id}: {success}")
 

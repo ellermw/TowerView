@@ -100,12 +100,12 @@ class AnalyticsService:
         return results
 
     def get_top_movies(self, filters: AnalyticsFilters, limit: int = 5, allowed_server_ids: Optional[List[int]] = None) -> List[TopMediaResponse]:
-        """Get most watched movies"""
+        """Get most watched movies - grouped across all servers and years"""
         query = self.db.query(
             PlaybackEvent.media_title,
-            PlaybackEvent.provider_media_id,
-            PlaybackEvent.year,
-            Server.name.label('server_name'),
+            func.min(PlaybackEvent.provider_media_id).label('provider_media_id'),
+            func.min(PlaybackEvent.year).label('year'),  # Take the earliest year
+            func.string_agg(func.distinct(Server.name), ', ').label('server_names'),
             func.count(PlaybackEvent.id).label('total_plays'),
             func.count(func.distinct(PlaybackEvent.username)).label('unique_users'),
             func.sum(
@@ -121,7 +121,7 @@ class AnalyticsService:
              PlaybackEvent.media_type == 'movie',
              PlaybackEvent.media_title.isnot(None)
          ))\
-         .group_by(PlaybackEvent.media_title, PlaybackEvent.provider_media_id, PlaybackEvent.year, Server.name)\
+         .group_by(PlaybackEvent.media_title)\
          .order_by(desc('total_plays'))\
          .limit(limit)
 
@@ -131,7 +131,7 @@ class AnalyticsService:
                 title=row.media_title,
                 media_type='movie',
                 provider_media_id=row.provider_media_id,
-                server_name=row.server_name,
+                server_name=row.server_names,  # Now shows all servers
                 year=row.year,
                 total_plays=row.total_plays,
                 unique_users=row.unique_users,
@@ -140,11 +140,11 @@ class AnalyticsService:
         return results
 
     def get_top_tv_shows(self, filters: AnalyticsFilters, limit: int = 5, allowed_server_ids: Optional[List[int]] = None) -> List[TopMediaResponse]:
-        """Get most watched TV shows"""
+        """Get most watched TV shows - grouped across all servers and years"""
         query = self.db.query(
             PlaybackEvent.grandparent_title,
-            PlaybackEvent.year,
-            Server.name.label('server_name'),
+            func.min(PlaybackEvent.year).label('year'),  # Take the earliest year
+            func.string_agg(func.distinct(Server.name), ', ').label('server_names'),
             func.count(PlaybackEvent.id).label('total_plays'),
             func.count(func.distinct(PlaybackEvent.username)).label('unique_users'),
             func.sum(
@@ -160,7 +160,7 @@ class AnalyticsService:
              PlaybackEvent.media_type == 'episode',
              PlaybackEvent.grandparent_title.isnot(None)
          ))\
-         .group_by(PlaybackEvent.grandparent_title, PlaybackEvent.year, Server.name)\
+         .group_by(PlaybackEvent.grandparent_title)\
          .order_by(desc('total_plays'))\
          .limit(limit)
 
@@ -169,7 +169,7 @@ class AnalyticsService:
             results.append(TopMediaResponse(
                 title=row.grandparent_title,
                 media_type='tv_show',
-                server_name=row.server_name,
+                server_name=row.server_names,  # Now shows all servers
                 year=row.year,
                 total_plays=row.total_plays,
                 unique_users=row.unique_users,
@@ -196,7 +196,8 @@ class AnalyticsService:
          .filter(and_(
              self.get_date_filter(filters),
              self.get_server_filter(filters, allowed_server_ids),
-             PlaybackEvent.library_section.isnot(None)
+             PlaybackEvent.library_section.isnot(None),
+             PlaybackEvent.library_section != 'Unknown Library'  # Exclude Unknown Library
          ))\
          .group_by(PlaybackEvent.library_section, Server.name)\
          .order_by(desc('total_plays'))\
