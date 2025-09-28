@@ -79,7 +79,15 @@ class UsersCacheService:
         if user_type == "admin":
             return users
 
-        # For local users, filter by permissions
+        # Media users can see all users (they're regular users of the media servers)
+        if user_type == "media_user":
+            return users
+
+        # Support users can also see all users (view-only role)
+        if user_type == "support":
+            return users
+
+        # For staff/local users, filter by permissions
         from ..models.user_permission import UserPermission
 
         # Get server IDs this user has permission to view users for

@@ -79,7 +79,15 @@ class SessionsCacheService:
         if user_type == "admin":
             return sessions
 
-        # For local users, filter by permissions
+        # Media users can see all sessions (they're regular users of the media servers)
+        if user_type == "media_user":
+            return sessions
+
+        # Support users can also see all sessions (view-only role)
+        if user_type == "support":
+            return sessions
+
+        # For staff/local users, filter by permissions
         from ..models.user_permission import UserPermission
 
         # Get server IDs this user has permission to view sessions for

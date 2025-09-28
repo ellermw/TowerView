@@ -61,8 +61,10 @@ class JellyfinProvider(BaseProvider):
                 }
 
                 # Try authentication without API key first (for user auth)
+                # Jellyfin may use a different endpoint path
+                base_url = self.base_url.rstrip('/')
                 response = await client.post(
-                    f"{self.base_url}/Users/AuthenticateByName",
+                    f"{base_url}/Users/AuthenticateByName",
                     json=auth_data,
                     headers=headers,
                     timeout=10.0
