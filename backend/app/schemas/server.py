@@ -10,6 +10,7 @@ class ServerBase(BaseModel):
     base_url: str
     group_id: Optional[int] = None
     enabled: bool = True
+    visible_to_media_users: bool = True
 
 
 class ServerCreate(ServerBase):
@@ -22,6 +23,7 @@ class ServerUpdate(BaseModel):
     base_url: Optional[str] = None
     group_id: Optional[int] = None
     enabled: Optional[bool] = None
+    visible_to_media_users: Optional[bool] = None
     credentials: Optional[Dict[str, Any]] = None
 
 

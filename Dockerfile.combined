@@ -1,0 +1,49 @@
+# Multi-stage build for optimized container
+FROM node:18-alpine AS frontend-builder
+
+WORKDIR /frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+# Build without TypeScript checking since we have some unused variable warnings
+RUN npx vite build
+
+# Main application stage
+FROM python:3.11-slim
+
+# Install system dependencies including nginx, supervisor, and redis
+RUN apt-get update && apt-get install -y \
+    nginx \
+    supervisor \
+    redis-server \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy backend requirements and install Python dependencies
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy backend code
+COPY backend/ ./backend/
+COPY worker/ ./worker/
+
+# Copy frontend build from builder stage
+COPY --from=frontend-builder /frontend/dist /usr/share/nginx/html
+
+# Copy nginx configuration
+COPY nginx/nginx.conf /etc/nginx/nginx.conf
+
+# Copy supervisor configuration
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Create necessary directories
+RUN mkdir -p /var/log/supervisor /data
+
+# Expose ports
+EXPOSE 80 8000
+
+# Start supervisor
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

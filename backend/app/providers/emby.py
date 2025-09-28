@@ -25,7 +25,7 @@ class EmbyProvider(BaseProvider):
                 print("No API key provided")
                 return False
 
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 # Ensure base_url doesn't end with slash to avoid double slashes
                 base_url = self.base_url.rstrip('/')
                 url = f"{base_url}/System/Info"
@@ -53,7 +53,7 @@ class EmbyProvider(BaseProvider):
     async def authenticate_user(self, username: str, password: str) -> Optional[Dict[str, Any]]:
         """Authenticate user with Emby"""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 # Emby authentication doesn't require API key for initial auth
                 auth_data = {
                     "Username": username,
@@ -99,7 +99,7 @@ class EmbyProvider(BaseProvider):
     async def list_active_sessions(self) -> List[Dict[str, Any]]:
         """Get active Emby sessions"""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 base_url = self.base_url.rstrip('/')
                 url = f"{base_url}/Sessions"
                 print(f"Fetching Emby sessions from: {url}")
@@ -317,7 +317,7 @@ class EmbyProvider(BaseProvider):
     async def get_version_info(self) -> Dict[str, Any]:
         """Get Emby server version information"""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 # Get server info
                 response = await client.get(
                     f"{self.base_url}/System/Info",
@@ -411,7 +411,7 @@ class EmbyProvider(BaseProvider):
                 print("No API key available for listing Emby users")
                 return []
 
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 response = await client.get(
                     f"{self.base_url}/Users",
                     headers={"X-Emby-Token": self.api_key},
@@ -445,7 +445,7 @@ class EmbyProvider(BaseProvider):
     async def get_user(self, provider_user_id: str) -> Optional[Dict[str, Any]]:
         """Get Emby user information"""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 response = await client.get(
                     f"{self.base_url}/Users/{provider_user_id}",
                     headers={"X-Emby-Token": self.api_key},
@@ -472,7 +472,7 @@ class EmbyProvider(BaseProvider):
         """Terminate an Emby session"""
         try:
             print(f"Attempting to terminate Emby session: {provider_session_id}")
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 base_url = self.base_url.rstrip('/')
                 headers = {
                     "X-Emby-Token": self.admin_token or self.api_key,
@@ -568,7 +568,7 @@ class EmbyProvider(BaseProvider):
             # Update with changes
             user_data.update(changes)
 
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 response = await client.post(
                     f"{self.base_url}/Users/{provider_user_id}",
                     json=user_data,
@@ -583,7 +583,7 @@ class EmbyProvider(BaseProvider):
     async def list_libraries(self) -> List[Dict[str, Any]]:
         """Get Emby libraries"""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 response = await client.get(
                     f"{self.base_url}/Library/VirtualFolders",
                     headers={"X-Emby-Token": self.admin_token or self.api_key},
@@ -612,7 +612,7 @@ class EmbyProvider(BaseProvider):
         """Set library access for Emby user"""
         try:
             # Get current user policy
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 response = await client.get(
                     f"{self.base_url}/Users/{provider_user_id}/Policy",
                     headers={"X-Emby-Token": self.admin_token or self.api_key},
@@ -641,7 +641,7 @@ class EmbyProvider(BaseProvider):
     async def get_media_info(self, provider_media_id: str) -> Optional[Dict[str, Any]]:
         """Get Emby media information"""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 response = await client.get(
                     f"{self.base_url}/Items/{provider_media_id}",
                     headers={"X-Emby-Token": self.admin_token or self.api_key},

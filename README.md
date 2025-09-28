@@ -1,8 +1,8 @@
 # TowerView - Unified Media Server Management Platform
 
-**Version 2.2.2 - Media User Authentication Fixed**
+**Version 2.3.0 - Optimized Docker Architecture & Enhanced Features**
 
-TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. The platform has been thoroughly tested and optimized for production use with excellent stability and performance.
+TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
 ## 🎯 Features
 
@@ -88,16 +88,54 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 ### Prerequisites
 
 - Docker and Docker Compose
-- PostgreSQL 15+
-- Redis 7+
 - 2GB+ RAM recommended
 - Ubuntu 20.04+ or similar Linux distribution
+- Ports 80/8080 available (configurable)
 
-### Installation
+### Deployment Options
+
+TowerView offers two deployment configurations:
+
+#### Option 1: Production (2 Containers) - RECOMMENDED ✅
+- **Simplified architecture**: Database + All-in-one App container
+- **Best for**: Production deployments, personal use, small teams
+- **Benefits**: Easy management, lower resource usage, single update point
+
+#### Option 2: Development (7 Containers)
+- **Microservices architecture**: Separate containers for each service
+- **Best for**: Development, testing, large-scale deployments
+- **Benefits**: Independent scaling, service isolation, hot-reload
+
+### Installation - Production Setup (Recommended)
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/yourusername/TowerView.git
+cd TowerView
+
+# 2. Run the automated deployment script
+./deploy.sh
+
+# That's it! The script will:
+# - Generate secure passwords
+# - Build the containers
+# - Start the services
+# - Display your admin credentials
+```
+
+### Alternative Installation Methods
+
+#### Using Docker Compose Directly
+
+```bash
+# Production setup (2 containers)
+docker-compose -f docker-compose.production.yml up -d
+
+# OR Simple setup (2 containers, for testing)
+docker-compose -f docker-compose.simple.yml up -d
+
+# OR Development setup (7 containers)
+docker-compose up -d
 cd TowerView
 
 # 2. Configure environment
@@ -119,30 +157,67 @@ docker-compose up -d
 - Username: `admin`
 - Password: `admin` (will force change on first login)
 
+## 🏗️ Architecture Comparison
+
+### Production Setup (2 Containers)
+```
+┌─────────────────────────────────────────┐
+│          All-in-One Container           │
+│  ┌────────────┐  ┌──────────────────┐  │
+│  │   Nginx    │  │  FastAPI Backend  │  │
+│  │  (Port 80) │  │   (Port 8000)     │  │
+│  └────────────┘  └──────────────────┘  │
+│  ┌────────────┐  ┌──────────────────┐  │
+│  │   Redis    │  │  Celery Workers   │  │
+│  │ (Internal) │  │  + Beat Scheduler │  │
+│  └────────────┘  └──────────────────┘  │
+└─────────────────────────────────────────┘
+                    ↓
+         ┌──────────────────┐
+         │   PostgreSQL DB   │
+         │    (Separate)     │
+         └──────────────────┘
+```
+
+### Development Setup (7 Containers)
+```
+┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+│  Nginx   │ │ Frontend │ │  Backend │ │  Worker  │
+└──────────┘ └──────────┘ └──────────┘ └──────────┘
+┌──────────┐ ┌──────────┐ ┌──────────┐
+│   Beat   │ │  Redis   │ │    DB    │
+└──────────┘ └──────────┘ └──────────┘
+```
+
 ## 📁 Project Structure
 
 ```
 TowerView/
-├── backend/                    # FastAPI backend
+├── backend/                        # FastAPI backend
 │   ├── app/
-│   │   ├── api/routes/        # API endpoints
-│   │   ├── core/              # Core functionality
-│   │   ├── models/            # Database models
-│   │   ├── providers/         # Media server integrations
-│   │   ├── schemas/           # Pydantic schemas
-│   │   └── services/          # Business logic
+│   │   ├── api/routes/            # API endpoints
+│   │   ├── core/                  # Core functionality
+│   │   ├── models/                # Database models
+│   │   ├── providers/             # Media server integrations
+│   │   ├── schemas/               # Pydantic schemas
+│   │   └── services/              # Business logic
 │   └── requirements.txt
-├── frontend/                   # React frontend
+├── frontend/                       # React frontend
 │   ├── src/
-│   │   ├── components/        # React components
-│   │   │   └── admin/        # Admin UI components
-│   │   ├── hooks/            # Custom React hooks
-│   │   ├── services/         # API services
-│   │   └── store/            # State management
+│   │   ├── components/            # React components
+│   │   ├── hooks/                # Custom React hooks
+│   │   ├── services/             # API services
+│   │   └── store/                # State management
 │   └── package.json
-├── nginx/                      # Nginx configuration
-├── docker-compose.yml          # Docker orchestration
-└── .env.example               # Environment template
+├── worker/                         # Celery background tasks
+├── nginx/                          # Nginx configuration
+├── docker-compose.yml              # Development setup (7 containers)
+├── docker-compose.simple.yml       # Simple setup (2 containers)
+├── docker-compose.production.yml   # Production setup (2 containers)
+├── Dockerfile.combined            # All-in-one container image
+├── supervisord.conf               # Process manager for production
+├── deploy.sh                      # Automated deployment script
+└── .env.example                   # Environment template
 ```
 
 ## 🔧 Configuration
@@ -342,7 +417,20 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.2.2 (Current)
+### Version 2.3.0 (Current)
+- **Optimized Docker Architecture**: New 2-container production setup (reduced from 7)
+- **Server Visibility Controls**: Admins can control which servers media users can see
+- **Username Privacy**: Media users see censored usernames (first letter + asterisks) for other users
+- **SSL Certificate Support**: Fixed authentication with self-signed certificates (Jellyfin/Emby)
+- **Automated Deployment**: Added `deploy.sh` script for one-command production setup
+- **Enhanced Caching**: Improved session and user data caching with automatic refresh
+- **Bug Fixes**:
+  - Fixed Plex OAuth redirect issues
+  - Fixed server visibility settings not persisting
+  - Resolved Jellyfin authentication failures with valid credentials
+  - Fixed media user session visibility
+
+### Version 2.2.2
 - **Media User Authentication Fixed**: All three providers now working
 - **Plex Enhancement**: Added direct username/password option alongside OAuth
 - **Emby/Jellyfin Fix**: Corrected authentication headers and methods

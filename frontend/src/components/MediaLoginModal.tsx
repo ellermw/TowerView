@@ -59,9 +59,9 @@ export default function MediaLoginModal({ isOpen, onClose, provider, onSuccess }
             })
 
             setCheckingPlex(false)
-            onSuccess(authResponse.data)
             toast.success('Successfully logged in with Plex!')
-            onClose()
+            onSuccess(authResponse.data)
+            // Don't close the modal - let onSuccess handle navigation
           }
         } catch (error) {
           // Continue polling
@@ -112,9 +112,9 @@ export default function MediaLoginModal({ isOpen, onClose, provider, onSuccess }
         password
       })
 
-      onSuccess(response.data)
       toast.success(`Successfully logged in with ${provider}!`)
-      onClose()
+      onSuccess(response.data)
+      // Don't close the modal - let onSuccess handle navigation
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'Authentication failed')
     } finally {

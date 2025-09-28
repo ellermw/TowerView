@@ -79,9 +79,39 @@ class UsersCacheService:
         if user_type == "admin":
             return users
 
-        # Media users can see all users (they're regular users of the media servers)
+        # Media users can only see users from servers marked as visible to them
         if user_type == "media_user":
-            return users
+            from ..models.server import Server
+            from ..models.user import User
+
+            # Get servers that are visible to media users
+            visible_servers = db.query(Server).filter(
+                Server.visible_to_media_users == True,
+                Server.enabled == True
+            ).all()
+
+            visible_server_ids = [server.id for server in visible_servers]
+
+            # Get the current media user's username
+            current_user = db.query(User).filter(User.id == user_id).first()
+            current_username = current_user.username.lower() if current_user else ""
+
+            # Filter users to only those from visible servers and censor usernames
+            filtered_users = []
+            for user in users:
+                if user.get("server_id") in visible_server_ids:
+                    # Make a copy of the user to avoid modifying the cache
+                    user_copy = user.copy()
+
+                    # Censor username if it's not the current user
+                    username = user_copy.get("username", "")
+                    if username and username.lower() != current_username:
+                        # Keep first letter, replace rest with asterisks
+                        user_copy["username"] = username[0] + "*" * (len(username) - 1)
+
+                    filtered_users.append(user_copy)
+
+            return filtered_users
 
         # Support users can also see all users (view-only role)
         if user_type == "support":

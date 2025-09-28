@@ -20,7 +20,7 @@ class JellyfinProvider(BaseProvider):
             print(f"Testing Jellyfin connection to: {self.base_url}")
             print(f"Using API key: {self.api_key[:10]}..." if self.api_key else "No API key provided")
 
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 # Ensure base_url doesn't end with slash to avoid double slashes
                 base_url = self.base_url.rstrip('/')
                 url = f"{base_url}/System/Info"
@@ -44,11 +44,13 @@ class JellyfinProvider(BaseProvider):
     async def authenticate_user(self, username: str, password: str) -> Optional[Dict[str, Any]]:
         """Authenticate user with Jellyfin"""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 # Jellyfin authentication doesn't require API key for initial auth
+                # Try both field names as different Jellyfin versions may differ
                 auth_data = {
                     "Username": username,
-                    "Pw": password  # Jellyfin uses "Pw" field
+                    "Pw": password,  # Some versions use "Pw"
+                    "Password": password  # Others use "Password"
                 }
 
                 # Add client identification headers
@@ -91,7 +93,7 @@ class JellyfinProvider(BaseProvider):
     async def list_active_sessions(self) -> List[Dict[str, Any]]:
         """Get active Jellyfin sessions"""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 base_url = self.base_url.rstrip('/')
                 url = f"{base_url}/Sessions"
                 print(f"Fetching Jellyfin sessions from: {url}")
@@ -335,7 +337,7 @@ class JellyfinProvider(BaseProvider):
     async def list_users(self) -> List[Dict[str, Any]]:
         """Get all Jellyfin users"""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 base_url = self.base_url.rstrip('/')
                 url = f"{base_url}/Users"
                 print(f"Fetching Jellyfin users from: {url}")
@@ -382,7 +384,7 @@ class JellyfinProvider(BaseProvider):
     async def get_user(self, provider_user_id: str) -> Optional[Dict[str, Any]]:
         """Get Jellyfin user information"""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 response = await client.get(
                     f"{self.base_url}/Users/{provider_user_id}",
                     headers={"Authorization": f"MediaBrowser Token={self.admin_token or self.api_key}"},
@@ -409,7 +411,7 @@ class JellyfinProvider(BaseProvider):
         """Terminate a Jellyfin session"""
         try:
             print(f"Attempting to terminate Jellyfin session: {provider_session_id}")
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 base_url = self.base_url.rstrip('/')
 
                 # First try sending a message to the client to stop playback
@@ -478,7 +480,7 @@ class JellyfinProvider(BaseProvider):
         """Modify Jellyfin user settings"""
         try:
             # Get current user policy
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 response = await client.get(
                     f"{self.base_url}/Users/{provider_user_id}/Policy",
                     headers={"Authorization": f"MediaBrowser Token={self.admin_token or self.api_key}"},
@@ -514,7 +516,7 @@ class JellyfinProvider(BaseProvider):
     async def list_libraries(self) -> List[Dict[str, Any]]:
         """Get Jellyfin libraries"""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 response = await client.get(
                     f"{self.base_url}/Library/VirtualFolders",
                     headers={"Authorization": f"MediaBrowser Token={self.admin_token or self.api_key}"},
@@ -546,7 +548,7 @@ class JellyfinProvider(BaseProvider):
     async def get_media_info(self, provider_media_id: str) -> Optional[Dict[str, Any]]:
         """Get Jellyfin media information"""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 response = await client.get(
                     f"{self.base_url}/Items/{provider_media_id}",
                     headers={"Authorization": f"MediaBrowser Token={self.admin_token or self.api_key}"},
@@ -575,7 +577,7 @@ class JellyfinProvider(BaseProvider):
     async def get_version_info(self) -> Dict[str, Any]:
         """Get Jellyfin server version information"""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False) as client:
                 # Get server info
                 base_url = self.base_url.rstrip('/')
                 response = await client.get(

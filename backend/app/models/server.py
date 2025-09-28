@@ -21,6 +21,7 @@ class Server(Base):
     base_url = Column(String, nullable=False)
     group_id = Column(Integer, nullable=True)  # Keep column for backward compatibility but remove FK
     enabled = Column(Boolean, default=True)
+    visible_to_media_users = Column(Boolean, default=True)  # Control visibility for media users
     last_seen_at = Column(DateTime(timezone=True), nullable=True)
     server_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

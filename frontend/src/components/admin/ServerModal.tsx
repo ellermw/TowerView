@@ -25,6 +25,7 @@ export default function ServerModal({
     type: server?.type || '',
     base_url: server?.base_url || '',
     enabled: server?.enabled !== false,
+    visible_to_media_users: server?.visible_to_media_users !== false,
     username: '',
     password: '',
     token: '',
@@ -38,6 +39,7 @@ export default function ServerModal({
         type: server.type || '',
         base_url: server.base_url || '',
         enabled: server.enabled !== false,
+        visible_to_media_users: server.visible_to_media_users !== false,
         username: '',
         password: '',
         token: '',
@@ -70,7 +72,8 @@ export default function ServerModal({
       name: formData.name,
       type: formData.type,
       base_url: formData.base_url,
-      enabled: formData.enabled
+      enabled: formData.enabled,
+      visible_to_media_users: formData.visible_to_media_users
     }
 
     // Only include credentials if they were provided
@@ -153,18 +156,33 @@ export default function ServerModal({
 
           {/* Enabled Status (Edit mode only) */}
           {mode === 'edit' && (
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                id="enabled"
-                checked={formData.enabled}
-                onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-slate-300 rounded"
-              />
-              <label htmlFor="enabled" className="ml-2 block text-sm text-slate-700 dark:text-slate-300">
-                Server Enabled
-              </label>
-            </div>
+            <>
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="enabled"
+                  checked={formData.enabled}
+                  onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-slate-300 rounded"
+                />
+                <label htmlFor="enabled" className="ml-2 block text-sm text-slate-700 dark:text-slate-300">
+                  Server Enabled
+                </label>
+              </div>
+
+              <div className="flex items-center mt-3">
+                <input
+                  type="checkbox"
+                  id="visible_to_media_users"
+                  checked={formData.visible_to_media_users}
+                  onChange={(e) => setFormData({ ...formData, visible_to_media_users: e.target.checked })}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-slate-300 rounded"
+                />
+                <label htmlFor="visible_to_media_users" className="ml-2 block text-sm text-slate-700 dark:text-slate-300">
+                  Visible to Media Users (shows in analytics and sessions)
+                </label>
+              </div>
+            </>
           )}
 
           {/* Authentication Fields */}

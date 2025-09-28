@@ -79,9 +79,39 @@ class SessionsCacheService:
         if user_type == "admin":
             return sessions
 
-        # Media users can see all sessions (they're regular users of the media servers)
+        # Media users can only see sessions from servers marked as visible to them
         if user_type == "media_user":
-            return sessions
+            from ..models.server import Server
+            from ..models.user import User
+
+            # Get servers that are visible to media users
+            visible_servers = db.query(Server).filter(
+                Server.visible_to_media_users == True,
+                Server.enabled == True
+            ).all()
+
+            visible_server_ids = [server.id for server in visible_servers]
+
+            # Get the current media user's username
+            current_user = db.query(User).filter(User.id == user_id).first()
+            current_username = current_user.username.lower() if current_user else ""
+
+            # Filter sessions to only those from visible servers and censor usernames
+            filtered_sessions = []
+            for session in sessions:
+                if session.get("server_id") in visible_server_ids:
+                    # Make a copy of the session to avoid modifying the cache
+                    session_copy = session.copy()
+
+                    # Censor username if it's not the current user
+                    username = session_copy.get("username", "")
+                    if username and username.lower() != current_username:
+                        # Keep first letter, replace rest with asterisks
+                        session_copy["username"] = username[0] + "*" * (len(username) - 1)
+
+                    filtered_sessions.append(session_copy)
+
+            return filtered_sessions
 
         # Support users can also see all sessions (view-only role)
         if user_type == "support":
