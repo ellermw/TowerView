@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-**Version 2.1.0 - Production Ready & Stable**
+**Version 2.2.0 - Enhanced Role Management & Security**
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. The platform has been thoroughly tested and optimized for production use with excellent stability and performance.
 
@@ -15,14 +15,25 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 - **Audit Logging**: Complete audit trail of all administrative actions with filtering and search
 - **Container Management**: Docker container control via Portainer integration
 
-### User Types
+### User Roles & Hierarchy
 
-1. **Admin Users**: Full system access with complete control over all features
-2. **Local Users**: Support staff with configurable permissions per server
-   - View/manage users
-   - Control containers (start/stop/restart)
-   - Terminate sessions
-   - Server-specific access control
+1. **Admin**: Full system access with complete control
+   - Manage all servers and settings
+   - Create users of any role
+   - Delete users and change roles
+   - Access to all features
+
+2. **Staff** (formerly Local Users): Server management capabilities
+   - Create Support users only
+   - Configurable permissions per server
+   - Manage containers and sessions
+   - Cannot delete users or change roles
+
+3. **Support**: Limited view-only access
+   - View sessions, users, and analytics
+   - Cannot create or delete users
+   - Cannot modify settings
+   - Ideal for help desk personnel
 
 ### Analytics & Monitoring
 
@@ -38,12 +49,14 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 ### Security Features
 
 - JWT-based authentication with refresh tokens
-- Role-based access control (RBAC)
-- Granular permission system for local users
+- Hierarchical role-based access control (Admin > Staff > Support)
+- Granular permission system per server
 - Comprehensive audit logging with IP and user agent tracking
 - Secure credential storage with encryption
 - Forced password changes on first login
 - Case-insensitive usernames for better UX
+- Role promotion/demotion controls
+- Self-protection (cannot delete/demote own account)
 
 ## 🚀 Quick Start
 
@@ -190,10 +203,12 @@ GET  /api/admin/audit-logs    # View audit logs
 
 ### User Management
 ```
-GET  /api/admin/local-users   # List local users
-POST /api/admin/local-users   # Create local user
+GET  /api/admin/local-users   # List system users
+POST /api/admin/local-users   # Create user (role-restricted)
 PATCH /api/admin/local-users/{id}  # Update user
-DELETE /api/admin/local-users/{id} # Delete user
+PATCH /api/admin/local-users/{id}/role # Change user role (admin only)
+DELETE /api/admin/local-users/{id} # Delete user (admin only)
+GET  /api/users/me             # Get current user info
 ```
 
 ### Settings & Metrics
@@ -285,6 +300,29 @@ docker exec -i towerview-db-1 psql -U towerview towerview < backup.sql
 ```bash
 docker exec towerview-redis-1 redis-cli FLUSHALL
 ```
+
+## 📝 Changelog
+
+### Version 2.2.0 (Current)
+- **New Role System**: Implemented hierarchical roles (Admin > Staff > Support)
+- **Role Management**: Admins can now promote/demote users between roles
+- **Enhanced Security**: Added self-protection against accidental account deletion
+- **UI Improvements**: System Users page shows all user types with appropriate badges
+- **Permission Display**: Admin accounts show "All servers" instead of count
+- **Migration Support**: Automatic migration of legacy local_user accounts to staff role
+
+### Version 2.1.0
+- Sessions and Users caching for improved performance
+- Site name customization
+- Fixed Portainer settings persistence
+- Icon transparency fixes
+- Password reset functionality
+
+### Version 2.0.0
+- Transform to Admin/Support Tool
+- Added audit logging
+- Container management via Portainer
+- Real-time metrics and monitoring
 
 ## 🐛 Troubleshooting
 
