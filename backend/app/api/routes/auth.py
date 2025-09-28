@@ -239,7 +239,7 @@ async def authenticate_media_user(
         cached_users = users_cache_service.get_cached_users()
 
         matching_servers = []
-        if cached_users:
+        if cached_users and isinstance(cached_users, dict):
             for server_id, users_list in cached_users.items():
                 for user in users_list:
                     if user.get('username', '').lower() == auth_data.username.lower():
@@ -327,7 +327,7 @@ async def authenticate_media_user(
 
         # Find servers where this username exists
         matching_servers = []
-        if cached_users:
+        if cached_users and isinstance(cached_users, dict):
             for server_id, users_list in cached_users.items():
                 # Check if username exists in this server's user list
                 for user in users_list:

@@ -36,7 +36,11 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Don't treat authentication attempts as session expiration
+    const isAuthEndpoint = originalRequest?.url?.includes('/auth/media/') ||
+                          originalRequest?.url?.includes('/auth/login')
+
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true
 
       const { refreshToken, logout } = useAuthStore.getState()
