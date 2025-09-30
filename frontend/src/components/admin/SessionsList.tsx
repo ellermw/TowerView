@@ -58,6 +58,7 @@ interface LiveSession {
   // Streaming details
   video_decision?: string
   original_resolution?: string
+  stream_resolution?: string
   original_bitrate?: string
   stream_bitrate?: string
   session_bandwidth?: string
@@ -692,7 +693,11 @@ export default function SessionsList() {
                                                       </summary>
                                                       <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                                                         <div>
-                                                          <span className="font-medium">Resolution:</span> {session.original_resolution}
+                                                          <span className="font-medium">Resolution:</span> {
+                                                            session.video_decision === 'transcode' && session.stream_resolution
+                                                              ? `${session.original_resolution} → ${session.stream_resolution}`
+                                                              : session.original_resolution
+                                                          }
                                                         </div>
                                                         <div>
                                                           <span className="font-medium">Video:</span> {session.video_codec} {session.video_profile}

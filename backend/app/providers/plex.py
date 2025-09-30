@@ -280,6 +280,7 @@ class PlexProvider(BaseProvider):
                         "summary": video.get("summary"),
                         "content_rating": video.get("contentRating"),
                         "library_section": video.get("librarySectionTitle"),
+                        "_library_section_title": video.get("librarySectionTitle"),  # Keep for 4K detection
 
                         # User info
                         "user_id": None,
@@ -345,6 +346,8 @@ class PlexProvider(BaseProvider):
 
                     # Extract TranscodeSession info for hardware transcoding details
                     transcode_elem = video.find('TranscodeSession')
+                    # Debug: Log whether TranscodeSession exists
+                    logger.info(f"TranscodeSession found for {session_data.get('title')}: {transcode_elem is not None}")
                     if transcode_elem is not None:
                         # Debug logging
                         logger.debug(f"TranscodeSession attributes for {session_data.get('title')}:")
@@ -369,6 +372,36 @@ class PlexProvider(BaseProvider):
                             except:
                                 session_data["transcode_speed"] = None
 
+                        # Get transcoded resolution if available from TranscodeSession
+                        transcode_width = transcode_elem.get("width")
+                        transcode_height = transcode_elem.get("height")
+
+                        # Debug log
+                        if "All of You" in session_data.get("title", ""):
+                            logger.info(f"All of You - TranscodeSession width={transcode_width}, height={transcode_height}")
+
+                        if transcode_height:
+                            h = int(transcode_height)
+                            if h >= 2000:
+                                session_data["stream_resolution"] = "4K"
+                            elif h >= 1080:
+                                session_data["stream_resolution"] = "1080p"
+                            elif h >= 720:
+                                session_data["stream_resolution"] = "720p"
+                            elif h >= 480:
+                                session_data["stream_resolution"] = "480p"
+                            elif h >= 360:
+                                session_data["stream_resolution"] = "360p"
+                            elif h >= 240:
+                                session_data["stream_resolution"] = "SD"
+                            else:
+                                # Very low resolution
+                                session_data["stream_resolution"] = f"{h}p"
+                    else:
+                        # No TranscodeSession found, but check if transcoding
+                        if session_data.get("video_decision") == "transcode":
+                            logger.info(f"WARNING: Transcoding but no TranscodeSession for {session_data.get('title')}")
+
                     # Extract Media info for transcoding details
                     media_elem = video.find('Media')
                     if media_elem is not None:
@@ -377,13 +410,80 @@ class PlexProvider(BaseProvider):
                         session_data["audio_channels"] = media_elem.get("audioChannels")
                         session_data["container"] = media_elem.get("container")
                         session_data["original_bitrate"] = media_elem.get("bitrate")
-                        session_data["original_resolution"] = media_elem.get("videoResolution")
-                        session_data["is_4k"] = media_elem.get("videoResolution") == "4k"
 
-                        # Extract Part info for transcoding decision
+                        # Get resolution info
+                        video_res = media_elem.get("videoResolution")
+                        media_height = media_elem.get("height")
+                        media_width = media_elem.get("width")
+
+                        # Check Part element first for transcoding decision
                         part_elem = media_elem.find('Part')
                         if part_elem is not None:
                             session_data["video_decision"] = part_elem.get("decision", "unknown")
+
+                        # Debug log for resolution
+                        if "All of You" in session_data.get("title", ""):
+                            logger.info(f"All of You - videoResolution from Media: {video_res}")
+                            logger.info(f"All of You - Media dimensions: {media_width}x{media_height}")
+                            logger.info(f"All of You - Video decision: {session_data.get('video_decision')}")
+                            # Log all Media attributes
+                            logger.info(f"All of You - Media attributes: {media_elem.attrib}")
+
+                        # For transcoding, videoResolution is the source, height/width is transcoded
+                        # For direct play, videoResolution is the actual resolution
+                        is_transcoding = session_data.get("video_decision") == "transcode"
+
+                        if is_transcoding:
+                            # During transcoding, Plex Media element shows transcoded info, not source!
+                            # We need to infer source resolution from library name or other metadata
+                            library = session_data.get("_library_section_title", "")
+
+                            # Check if it's from a 4K library
+                            if "4K" in library or "2160" in library:
+                                session_data["original_resolution"] = "4K"
+
+                            # If TranscodeSession didn't provide stream_resolution, use Media height
+                            if not session_data.get("stream_resolution") and media_height:
+                                h = int(media_height)
+                                # This is the transcoded resolution
+                                if h >= 2000:
+                                    session_data["stream_resolution"] = "4K"
+                                elif h >= 1080:
+                                    session_data["stream_resolution"] = "1080p"
+                                elif h >= 720:
+                                    session_data["stream_resolution"] = "720p"
+                                elif h >= 480:
+                                    session_data["stream_resolution"] = "480p"
+                                elif h >= 360:
+                                    session_data["stream_resolution"] = "360p"
+                                elif h >= 240:
+                                    session_data["stream_resolution"] = "SD"
+                                else:
+                                    session_data["stream_resolution"] = f"{h}p"
+
+                                # Try to infer original resolution if not from 4K library
+                                if not session_data.get("original_resolution"):
+                                    # When transcoding down, source is usually higher quality
+                                    if h < 480:
+                                        session_data["original_resolution"] = "1080p"  # Very low transcode suggests HD/4K source
+                                    elif h < 720:
+                                        session_data["original_resolution"] = "720p"  # SD transcode suggests 720p+ source
+                                    elif h < 1080:
+                                        session_data["original_resolution"] = "1080p"  # 720p transcode suggests 1080p+ source
+                                    else:
+                                        session_data["original_resolution"] = "4K"  # 1080p transcode suggests 4K source
+                        else:
+                            # Direct play - use videoResolution
+                            session_data["original_resolution"] = video_res
+
+                        session_data["is_4k"] = video_res == "4k"
+
+                        # Debug final resolutions
+                        if "All of You" in session_data.get("title", ""):
+                            logger.info(f"All of You - Final: original_resolution={session_data.get('original_resolution')}, stream_resolution={session_data.get('stream_resolution')}")
+
+                        # Extract more Part info
+                        if part_elem is not None:
 
                             # Extract detailed stream info
                             video_stream = part_elem.find('Stream[@streamType="1"]')  # Video stream

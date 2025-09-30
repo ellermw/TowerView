@@ -64,9 +64,9 @@ async def initiate_plex_oauth():
 
         data = response.json()
 
-        # Create a more robust auth URL with context parameter to help with redirect handling
-        # This provides better user experience by allowing Plex to know the context
-        auth_app_url = f"https://app.plex.tv/auth#?clientID={client_id}&code={data['code']}&context%5Bdevice%5D%5Bproduct%5D=TowerView"
+        # Create the auth URL - use the correct OAuth format without hash
+        # The forwardUrl parameter helps Plex know this is an OAuth flow
+        auth_app_url = f"https://app.plex.tv/auth?clientID={client_id}&code={data['code']}&context%5Bdevice%5D%5Bproduct%5D=TowerView&forwardUrl=http://localhost:8080"
 
         return PlexOAuthInitResponse(
             pin_id=str(data["id"]),
@@ -122,7 +122,7 @@ async def check_plex_oauth(request: PlexOAuthCompleteRequest):
             raise HTTPException(status_code=400, detail=f"Authentication error: {', '.join(str(e) for e in errors)}")
 
         # Log the response for debugging
-        logger.info(f"Plex PIN check response - Has token: {bool(auth_token)}, Errors: {errors}")
+        logger.info(f"Plex PIN check response - PIN: {request.pin_id}, Has token: {bool(auth_token)}, Errors: {errors}, Full response: {data}")
 
         if auth_token:
             # Get user's accessible servers
@@ -183,6 +183,10 @@ async def authenticate_media_user(
                 headers={
                     "X-Plex-Token": auth_data.auth_token,
                     "Accept": "application/json"
+                },
+                params={
+                    "includeHttps": "1",
+                    "includeRelay": "1"
                 }
             )
 

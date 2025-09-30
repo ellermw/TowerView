@@ -301,22 +301,27 @@ export default function UsersList() {
 
                       {/* Action buttons */}
                       <div className="mt-4 flex gap-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openPasswordModal(user)
-                          }}
-                          className="flex-1 px-2 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 dark:text-indigo-400 dark:bg-indigo-900 dark:hover:bg-indigo-800 rounded-md transition-colors"
-                        >
-                          <KeyIcon className="h-3 w-3 inline mr-1" />
-                          Password
-                        </button>
+                        {(() => {
+                          console.log(`User ${user.username} - server_type: "${user.server_type}", lowercase: "${user.server_type?.toLowerCase()}", isPlex: ${user.server_type?.toLowerCase() === 'plex'}`)
+                          return user.server_type?.toLowerCase() !== 'plex'
+                        })() && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openPasswordModal(user)
+                            }}
+                            className="flex-1 px-2 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 dark:text-indigo-400 dark:bg-indigo-900 dark:hover:bg-indigo-800 rounded-md transition-colors"
+                          >
+                            <KeyIcon className="h-3 w-3 inline mr-1" />
+                            Password
+                          </button>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
                             openLibraryModal(user)
                           }}
-                          className="flex-1 px-2 py-1 text-xs font-medium text-green-600 bg-green-50 hover:bg-green-100 dark:text-green-400 dark:bg-green-900 dark:hover:bg-green-800 rounded-md transition-colors"
+                          className={user.server_type?.toLowerCase() === 'plex' ? "w-full px-2 py-1 text-xs font-medium text-green-600 bg-green-50 hover:bg-green-100 dark:text-green-400 dark:bg-green-900 dark:hover:bg-green-800 rounded-md transition-colors" : "flex-1 px-2 py-1 text-xs font-medium text-green-600 bg-green-50 hover:bg-green-100 dark:text-green-400 dark:bg-green-900 dark:hover:bg-green-800 rounded-md transition-colors"}
                         >
                           <FolderIcon className="h-3 w-3 inline mr-1" />
                           Libraries

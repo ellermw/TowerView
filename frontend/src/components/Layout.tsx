@@ -61,10 +61,8 @@ export default function Layout({ children }: LayoutProps) {
       // Servers - visible to all but functionality limited by manage_servers permission
       management.push({ name: 'Servers', href: '/admin/servers' })
 
-      // Sessions - requires view_sessions permission
-      if (isAdmin || hasPermission('view_sessions')) {
-        management.push({ name: 'Sessions', href: '/admin/sessions' })
-      }
+      // Log what's being added to management for debugging
+      console.log('Building management menu - isAdmin:', isAdmin, 'isLocalUser:', isLocalUser, 'permissions:', hasPermission)
 
       // Users - requires view_users permission
       if (isAdmin || hasPermission('view_users')) {
@@ -86,6 +84,9 @@ export default function Layout({ children }: LayoutProps) {
         nav.push({ name: 'Settings', href: '/admin/settings' })
       }
     }
+
+    console.log('Final management items:', management)
+    console.log('Final navigation items:', nav)
 
     setNavigation(nav)
     setManagementItems(management)
@@ -205,7 +206,10 @@ export default function Layout({ children }: LayoutProps) {
                         <div className="px-4 py-2 text-sm text-slate-700 dark:text-slate-300 border-b border-slate-100 dark:border-slate-600">
                           {user?.username}
                           <div className="text-xs text-slate-500 dark:text-slate-400">
-                            {user?.type === 'admin' ? 'Administrator' : 'Local User'}
+                            {user?.type === 'admin' ? 'Administrator' :
+                             user?.type === 'media_user' ? 'Media User' :
+                             user?.type === 'staff' ? 'Staff' :
+                             user?.type === 'support' ? 'Support' : 'Local User'}
                           </div>
                         </div>
                         <Menu.Item>
@@ -326,7 +330,10 @@ export default function Layout({ children }: LayoutProps) {
                       {user?.username}
                     </div>
                     <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                      {user?.type === 'admin' ? 'Administrator' : 'Local User'}
+                      {user?.type === 'admin' ? 'Administrator' :
+                       user?.type === 'media_user' ? 'Media User' :
+                       user?.type === 'staff' ? 'Staff' :
+                       user?.type === 'support' ? 'Support' : 'Local User'}
                     </div>
                   </div>
                 </div>

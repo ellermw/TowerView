@@ -116,7 +116,7 @@ class EmbyProvider(BaseProvider):
                     return []
 
                 sessions_data = response.json()
-                print(f"Emby sessions raw data: {sessions_data[:500] if sessions_data else 'Empty'}")
+                logger.info(f"Emby sessions raw data: {sessions_data[:500] if sessions_data else 'Empty'}")
                 sessions = []
 
                 for session in sessions_data:
@@ -130,10 +130,10 @@ class EmbyProvider(BaseProvider):
                     play_state = session.get("PlayState", {})
 
                     if not item:
-                        print(f"Skipping Emby session {session.get('Id')} - no NowPlayingItem")
+                        logger.debug(f"Skipping Emby session {session.get('Id')} - no NowPlayingItem")
                         continue
 
-                    print(f"Processing Emby session ID: {session.get('Id')} with media: {item.get('Name')} of type {item.get('Type')}")
+                    logger.debug(f"Processing Emby session ID: {session.get('Id')} with media: {item.get('Name')} of type {item.get('Type')}")
 
                     # Get media info with fallbacks
                     media_title = item.get("Name") or "Unknown Media"
@@ -256,9 +256,33 @@ class EmbyProvider(BaseProvider):
 
                     # Get source resolution for reference
                     def get_source_resolution():
-                        if video_stream.get("Height"):
-                            height = video_stream.get("Height")
-                            # Consider anything >= 2000 pixels as 4K (covers cinema 4K at 2048p and UHD at 2160p)
+                        height = video_stream.get("Height")
+                        width = video_stream.get("Width")
+
+                        # Check if it's Dolby Vision for debug logging
+                        video_range = video_stream.get("VideoRange", "")
+                        is_dv = "dolby" in video_range.lower()
+
+                        # Debug log for all Dolby Vision content
+                        if is_dv:
+                            logger.info(f"Emby - Dolby Vision content '{item.get('Name', 'Unknown')}' - Height: {height}, Width: {width}")
+
+                        # Check both height and width for 4K detection
+                        # 4K UHD is 3840x2160, but sometimes dimensions might be swapped or video might be portrait
+                        if height and width:
+                            # Standard 4K detection
+                            if height >= 2000 or width >= 3800:
+                                return "4K"
+                            elif height >= 1080 or width >= 1920:
+                                return "1080p"
+                            elif height >= 720 or width >= 1280:
+                                return "720p"
+                            elif height >= 480:
+                                return "480p"
+                            else:
+                                return f"{height}p"
+                        elif height:
+                            # Fallback to height only
                             if height >= 2000:
                                 return "4K"
                             elif height >= 1080:
@@ -300,9 +324,10 @@ class EmbyProvider(BaseProvider):
                         "runtime": item.get("RunTimeTicks", 0) // 10000000 if item.get("RunTimeTicks") else 0,
                         "library_section": "Unknown Library",  # Emby doesn't provide this in session data
 
-                        # Streaming details - show what's actually playing
+                        # Streaming details
                         "video_decision": "transcode" if is_transcoding else play_method,
-                        "original_resolution": playing_resolution,  # This shows what's being played
+                        "original_resolution": source_resolution,  # Original/source resolution
+                        "stream_resolution": playing_resolution if is_transcoding else None,  # Transcoded resolution (only when transcoding)
                         "original_bitrate": str(video_stream.get("BitRate", 0) // 1000) if video_stream.get("BitRate") else "0",
                         "stream_bitrate": str(session_bandwidth_kbps),
                         "video_codec": transcoding_info.get("VideoCodec", video_stream.get("Codec", "Unknown")) if transcoding_info else video_stream.get("Codec", "Unknown"),
@@ -354,11 +379,11 @@ class EmbyProvider(BaseProvider):
                         session_data["full_title"] = " - ".join(title_parts)
 
                     sessions.append(session_data)
-                    print(f"Added Emby session: {media_title} ({media_type})")
+                    logger.info(f"Added Emby session: {media_title} ({media_type})")
 
                 # Sort sessions by session_id for consistent ordering
                 sessions.sort(key=lambda x: x.get('session_id', ''))
-                print(f"Returning {len(sessions)} Emby sessions in sorted order")
+                logger.info(f"Returning {len(sessions)} Emby sessions in sorted order")
                 return sessions
 
         except Exception:

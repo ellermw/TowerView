@@ -64,6 +64,7 @@ class LiveSessionResponse(BaseModel):
     # Streaming details
     video_decision: Optional[str] = None
     original_resolution: Optional[str] = None
+    stream_resolution: Optional[str] = None  # Resolution after transcoding
     original_bitrate: Optional[str] = None
     stream_bitrate: Optional[str] = None
     video_codec: Optional[str] = None

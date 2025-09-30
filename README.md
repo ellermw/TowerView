@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-**Version 2.3.2 - Enhanced HDR Detection & Resolution Reporting**
+**Version 2.3.3 - Streamlined UI & Analytics Improvements**
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -20,8 +20,7 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 - **Dashboard**: Main overview with server stats and active sessions
 - **Management** (dropdown menu):
   - **Servers**: Add/edit/remove media servers
-  - **Sessions**: View and manage active streaming sessions
-  - **Users**: View media server users
+  - **Users**: View media server users (password management for Emby/Jellyfin only)
   - **System Users**: Create and manage TowerView users (admin only)
 - **Audit Logs**: View all system activity (admin only)
 - **Settings**: System configuration and integrations
@@ -417,7 +416,17 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.2 (Current)
+### Version 2.3.3 (Current)
+- **UI Improvements**:
+  - Removed Sessions page from navigation (active sessions available on Dashboard)
+  - Combined duplicate library names in analytics (libraries with same name across servers are grouped)
+  - Removed password management button for Plex users (feature not supported by Plex API)
+- **Bug Fixes**:
+  - Fixed media user profile display showing "Local User" instead of "Media User"
+  - Fixed Plex OAuth authentication completion issues
+  - Fixed transcode resolution display (now correctly shows source and target resolutions)
+
+### Version 2.3.2
 - **HDR & Resolution Improvements**:
   - Fixed HDR detection for all media server types (Plex, Jellyfin, Emby)
   - Added comprehensive HDR field detection including HDR10, Dolby Vision, and HDR10+

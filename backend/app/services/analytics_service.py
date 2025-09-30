@@ -179,10 +179,10 @@ class AnalyticsService:
         return results
 
     def get_top_libraries(self, filters: AnalyticsFilters, limit: int = 5, allowed_server_ids: Optional[List[int]] = None) -> List[TopLibraryResponse]:
-        """Get most used libraries"""
+        """Get most used libraries - combines libraries with the same name across servers"""
         query = self.db.query(
             PlaybackEvent.library_section,
-            Server.name.label('server_name'),
+            func.string_agg(func.distinct(Server.name), ', ').label('server_names'),
             func.count(PlaybackEvent.id).label('total_plays'),
             func.count(func.distinct(PlaybackEvent.username)).label('unique_users'),
             func.sum(
@@ -199,7 +199,7 @@ class AnalyticsService:
              PlaybackEvent.library_section.isnot(None),
              PlaybackEvent.library_section != 'Unknown Library'  # Exclude Unknown Library
          ))\
-         .group_by(PlaybackEvent.library_section, Server.name)\
+         .group_by(PlaybackEvent.library_section)\
          .order_by(desc('total_plays'))\
          .limit(limit)
 
@@ -207,7 +207,7 @@ class AnalyticsService:
         for row in query:
             results.append(TopLibraryResponse(
                 library_name=row.library_section,
-                server_name=row.server_name,
+                server_name=row.server_names,  # Now shows all servers with this library
                 total_plays=row.total_plays,
                 unique_users=row.unique_users,
                 total_watch_time_minutes=int(row.total_watch_time_minutes or 0),

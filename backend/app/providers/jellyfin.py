@@ -151,26 +151,37 @@ class JellyfinProvider(BaseProvider):
                     audio_stream = next((s for s in media_streams if s.get("Type") == "Audio"), {})
 
                     # Parse resolution from DisplayTitle (extract just the resolution part)
-                    def extract_resolution(display_title):
-                        if not display_title:
-                            return "Unknown"
+                    def extract_resolution(display_title=None, height=None):
+                        if display_title:
+                            # Look for common resolution patterns like 1080p, 720p, 4K, etc.
+                            import re
 
-                        # Look for common resolution patterns like 1080p, 720p, 4K, etc.
-                        import re
+                            # Check for 4K variations
+                            if re.search(r'4K|2160p', display_title, re.IGNORECASE):
+                                return "4K"
 
-                        # Check for 4K variations
-                        if re.search(r'4K|2160p', display_title, re.IGNORECASE):
-                            return "4K"
-
-                        # Check for standard resolutions
-                        resolution_match = re.search(r'(\d{3,4}p)', display_title)
-                        if resolution_match:
-                            return resolution_match.group(1)
+                            # Check for standard resolutions
+                            resolution_match = re.search(r'(\d{3,4}p)', display_title)
+                            if resolution_match:
+                                return resolution_match.group(1)
 
                         # Fallback to height if available
+                        if height:
+                            if height >= 2000:  # Include cinema 4K
+                                return "4K"
+                            elif height >= 1080:
+                                return "1080p"
+                            elif height >= 720:
+                                return "720p"
+                            elif height >= 480:
+                                return "480p"
+                            else:
+                                return f"{height}p"
+
+                        # Final fallback to video stream height
                         if video_stream.get("Height"):
                             height = video_stream.get("Height")
-                            if height >= 2160:
+                            if height >= 2000:  # Include cinema 4K
                                 return "4K"
                             elif height >= 1080:
                                 return "1080p"
@@ -283,7 +294,8 @@ class JellyfinProvider(BaseProvider):
 
                         # Streaming details
                         "video_decision": "transcode" if is_transcoding else play_method,
-                        "original_resolution": extract_resolution(video_stream.get("DisplayTitle")),
+                        "original_resolution": extract_resolution(video_stream.get("DisplayTitle"), video_stream.get("Height")),  # Source resolution
+                        "stream_resolution": extract_resolution(None, transcoding_info.get("Height")) if is_transcoding and transcoding_info.get("Height") else None,  # Transcoded resolution
                         "original_bitrate": str(video_stream.get("BitRate", 0) // 1000) if video_stream.get("BitRate") else "0",
                         "stream_bitrate": str(session_bandwidth_kbps),
                         "video_codec": transcoding_info.get("VideoCodec", video_stream.get("Codec", "Unknown")) if transcoding_info else video_stream.get("Codec", "Unknown"),

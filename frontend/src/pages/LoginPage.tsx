@@ -74,7 +74,7 @@ export default function LoginPage() {
           const user = {
             id: parseInt(tokenPayload.sub),
             username: formData.username,
-            type: 'admin' as const, // Default to admin for safety
+            type: tokenPayload.type || 'admin', // Use type from token
           }
 
           if (data.must_change_password) {
@@ -288,8 +288,8 @@ export default function LoginPage() {
                 const tokenPayload = JSON.parse(atob(authData.access_token.split('.')[1]))
                 const user = {
                   id: parseInt(tokenPayload.sub),
-                  username: 'media_user',
-                  type: 'media_user' as const,
+                  username: tokenPayload.username || 'media_user',
+                  type: tokenPayload.type || 'media_user',
                 }
                 setAuth(user, authData.access_token, authData.refresh_token)
                 toast.success('Login successful!')
