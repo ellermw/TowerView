@@ -268,6 +268,12 @@ async def get_all_sessions(
 
     logger.info(f"Returning {len(cached_sessions)} sessions to user {current_user.username}")
 
+    # Debug logging for Together session
+    for session in cached_sessions:
+        if "Together" in session.get("title", ""):
+            logger.info(f"Together session data: is_hdr={session.get('is_hdr')}, quality_profile={session.get('quality_profile')}")
+            break
+
     return cached_sessions
 
 

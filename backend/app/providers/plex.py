@@ -391,9 +391,34 @@ class PlexProvider(BaseProvider):
                                 session_data["video_profile"] = video_stream.get("profile")
                                 session_data["stream_bitrate"] = video_stream.get("bitrate")
 
+                                # Debug logging for HDR detection
+                                colorTrc = video_stream.get("colorTrc")
+                                colorRange = video_stream.get("colorRange")
+                                colorSpace = video_stream.get("colorSpace")
+                                colorPrimaries = video_stream.get("colorPrimaries")
+                                DOVIPresent = video_stream.get("DOVIPresent")
+                                DOVILevel = video_stream.get("DOVILevel")
+                                profile = video_stream.get("profile", "").lower()
+
+                                logger.debug(f"HDR Debug for {session_data.get('title')}: colorTrc={colorTrc}, colorRange={colorRange}, colorSpace={colorSpace}, colorPrimaries={colorPrimaries}, DOVIPresent={DOVIPresent}, DOVILevel={DOVILevel}, profile={profile}")
+
                                 # Check for HDR/Dolby Vision
-                                session_data["is_hdr"] = video_stream.get("colorTrc") == "smpte2084"
-                                session_data["is_dolby_vision"] = video_stream.get("DOVIPresent") == "1"
+                                # HDR10 is indicated by colorTrc=smpte2084 or colorPrimaries=bt2020
+                                # Also check for Main 10 profile which indicates HDR
+                                session_data["is_hdr"] = (
+                                    colorTrc == "smpte2084" or
+                                    colorPrimaries in ["bt2020", "bt2020nc"] or
+                                    colorSpace in ["bt2020nc", "bt2020"] or
+                                    "main 10" in profile or
+                                    "main10" in profile
+                                )
+                                session_data["is_dolby_vision"] = (
+                                    DOVIPresent == "1" or
+                                    DOVILevel is not None
+                                )
+
+                                # Log the HDR detection result
+                                logger.info(f"HDR Detection for {session_data.get('title')}: is_hdr={session_data['is_hdr']}, is_dolby_vision={session_data['is_dolby_vision']}")
 
                                 # Build quality description
                                 quality_parts = []
@@ -421,6 +446,10 @@ class PlexProvider(BaseProvider):
                         session_data["full_title"] = session_data["title"] or "Unknown"
 
                     sessions.append(session_data)
+
+                    # Log critical session data for debugging
+                    if "Together" in session_data.get("title", ""):
+                        logger.info(f"Added Together session with is_hdr={session_data.get('is_hdr')}, quality_profile={session_data.get('quality_profile')}")
 
                 return sessions
 

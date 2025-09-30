@@ -72,6 +72,12 @@ class LiveSessionResponse(BaseModel):
     session_bandwidth: Optional[str] = None
     quality_profile: Optional[str] = None
 
+    # Video quality and HDR fields
+    is_4k: Optional[bool] = None
+    is_hdr: Optional[bool] = None
+    is_dolby_vision: Optional[bool] = None
+    video_profile: Optional[str] = None
+
     # Hardware transcoding fields (Plex)
     transcode_hw_requested: Optional[bool] = None
     transcode_hw_full_pipeline: Optional[bool] = None

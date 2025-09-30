@@ -209,7 +209,19 @@ export default function AdminHome() {
   // Get active sessions with 1-second refresh for live bandwidth updates
   const { data: sessions = [], isLoading: sessionsLoading, refetch: refetchSessions, error: sessionsError } = useQuery<LiveSession[]>(
     'admin-sessions',
-    () => api.get('/admin/sessions').then(res => res.data),
+    () => api.get('/admin/sessions').then(res => {
+      // Debug logging for HDR
+      const togetherSession = res.data.find((s: any) => s.title?.includes('Together'));
+      if (togetherSession) {
+        console.log('Together session from API:', {
+          title: togetherSession.title,
+          is_hdr: togetherSession.is_hdr,
+          is_dolby_vision: togetherSession.is_dolby_vision,
+          quality_profile: togetherSession.quality_profile
+        });
+      }
+      return res.data;
+    }),
     {
       refetchInterval: 2000, // 2-second refresh for live updates
       refetchOnWindowFocus: false,

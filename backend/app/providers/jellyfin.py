@@ -45,63 +45,24 @@ class JellyfinProvider(BaseProvider):
         """Authenticate user with Jellyfin"""
         try:
             async with httpx.AsyncClient(verify=False) as client:
-                # Try both authentication methods since different Jellyfin versions use different approaches
                 base_url = self.base_url.rstrip('/')
 
-                # Method 1: Try with form-encoded data (works better with special characters)
-                headers_form = {
-                    "X-Emby-Client": "TowerView",
-                    "X-Emby-Device-Name": "TowerView",
-                    "X-Emby-Device-Id": "towerview-auth",
-                    "X-Emby-Client-Version": "1.0.0",
-                    "Content-Type": "application/x-www-form-urlencoded"
-                }
-
-                # Form data approach
-                form_data = {
-                    "Username": username,
-                    "Pw": password
-                }
-
-                try:
-                    response = await client.post(
-                        f"{base_url}/Users/AuthenticateByName",
-                        data=form_data,
-                        headers=headers_form,
-                        timeout=10.0
-                    )
-
-                    if response.status_code == 200:
-                        data = response.json()
-                        user = data.get("User", {})
-                        return {
-                            "user_id": user.get("Id"),
-                            "username": user.get("Name"),
-                            "email": user.get("Email"),
-                            "token": data.get("AccessToken")
-                        }
-                except:
-                    pass
-
-                # Method 2: Try with JSON but with Password field instead of Pw
-                headers_json = {
-                    "X-Emby-Client": "TowerView",
-                    "X-Emby-Device-Name": "TowerView",
-                    "X-Emby-Device-Id": "towerview-auth",
-                    "X-Emby-Client-Version": "1.0.0",
+                # Try the standard Jellyfin/Emby authentication format
+                headers = {
+                    "X-Emby-Authorization": f'MediaBrowser Client="TowerView", Device="TowerView", DeviceId="towerview-auth", Version="1.0.0"',
                     "Content-Type": "application/json"
                 }
 
-                # Try with Password field
+                # Jellyfin expects Username and Pw fields
                 auth_data = {
                     "Username": username,
-                    "Password": password
+                    "Pw": password  # Note: Jellyfin uses "Pw" not "Password"
                 }
 
                 response = await client.post(
                     f"{base_url}/Users/AuthenticateByName",
                     json=auth_data,
-                    headers=headers_json,
+                    headers=headers,
                     timeout=10.0
                 )
 
@@ -338,6 +299,13 @@ class JellyfinProvider(BaseProvider):
                         "transcode_hw_decode_title": hw_decode_title,
                         "transcode_hw_encode_title": hw_encode_title,
 
+                        # HDR detection (Jellyfin uses similar format to Emby)
+                        "is_hdr": video_stream.get("ColorTransfer") == "smpte2084" or video_stream.get("VideoRange") in ["HDR", "HDR10"],
+                        "is_dolby_vision": video_stream.get("VideoRange") == "DolbyVision" or video_stream.get("ExtendedVideoType") == "DolbyVision",
+
+                        # Quality profile for UI display (with HDR)
+                        "quality_profile": self._build_quality_profile(extract_resolution(video_stream.get("DisplayTitle")), video_stream),
+
                         # Product info
                         "product": session.get("Client", "Unknown"),
 
@@ -366,6 +334,27 @@ class JellyfinProvider(BaseProvider):
 
         except Exception:
             return []
+
+    def _build_quality_profile(self, resolution: str, video_stream: Dict) -> str:
+        """Build a quality profile string including HDR information"""
+        parts = []
+
+        # Add resolution
+        if resolution and resolution != "Unknown":
+            parts.append(resolution)
+
+        # Check for HDR/Dolby Vision
+        if video_stream.get("VideoRange") == "DolbyVision" or video_stream.get("ExtendedVideoType") == "DolbyVision":
+            parts.append("DoVi")
+        elif video_stream.get("ColorTransfer") == "smpte2084" or video_stream.get("VideoRange") in ["HDR", "HDR10"]:
+            parts.append("HDR")
+
+        # Add video codec
+        codec = video_stream.get("Codec", "").upper()
+        if codec:
+            parts.append(codec)
+
+        return " ".join(parts) if parts else "Unknown"
 
     async def list_users(self) -> List[Dict[str, Any]]:
         """Get all Jellyfin users"""

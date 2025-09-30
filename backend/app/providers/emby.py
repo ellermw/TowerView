@@ -152,11 +152,38 @@ class EmbyProvider(BaseProvider):
                     video_stream = next((s for s in media_streams if s.get("Type") == "Video"), {})
                     audio_stream = next((s for s in media_streams if s.get("Type") == "Audio"), {})
 
+                    # Get transcoding info to check if we're transcoding
+                    transcoding_info = session.get("TranscodingInfo", {})
+                    play_method = play_state.get("PlayMethod", "").lower()
+                    # Only consider it transcoding if PlayMethod is "transcode"
+                    # DirectStream means the video is not being transcoded (though container might be remuxed)
+                    is_transcoding = play_method == "transcode"
+
                     # Parse resolution and bitrate
                     def get_resolution():
-                        if video_stream.get("Height"):
+                        # Get the actual playing resolution
+                        height = None
+                        width = None
+
+                        # If we're transcoding, use the transcoded resolution
+                        if is_transcoding and transcoding_info and transcoding_info.get("Height"):
+                            height = transcoding_info.get("Height")
+                            width = transcoding_info.get("Width")
+                            original_height = video_stream.get("Height")
+                            if original_height and original_height != height:
+                                logger.info(f"Emby transcoding - Playing: {height}p (transcoded from {original_height}p)")
+                        # Otherwise use the original resolution
+                        elif video_stream.get("Height"):
                             height = video_stream.get("Height")
-                            if height >= 2160:
+                            width = video_stream.get("Width")
+
+                        # Debug logging for resolution detection
+                        if "Together" in media_title:
+                            logger.info(f"Together resolution - Playing Height: {height}, Width: {width}, Is Transcoding: {is_transcoding}")
+
+                        if height:
+                            # Consider anything >= 2000 pixels as 4K (covers cinema 4K at 2048p and UHD at 2160p)
+                            if height >= 2000:
                                 return "4K"
                             elif height >= 1080:
                                 return "1080p"
@@ -224,12 +251,31 @@ class EmbyProvider(BaseProvider):
                                     hw_encode_title = "AMF"
                                 break
 
-                        # Also check if IsVideoDirect is false (indicates transcoding)
-                        if transcoding_info.get("IsVideoDirect") == False:
-                            is_transcoding = True
+                        # Note: IsVideoDirect can be False even for DirectStream (container remuxing)
+                        # We rely on PlayMethod to determine if video is being transcoded
+
+                    # Get source resolution for reference
+                    def get_source_resolution():
+                        if video_stream.get("Height"):
+                            height = video_stream.get("Height")
+                            # Consider anything >= 2000 pixels as 4K (covers cinema 4K at 2048p and UHD at 2160p)
+                            if height >= 2000:
+                                return "4K"
+                            elif height >= 1080:
+                                return "1080p"
+                            elif height >= 720:
+                                return "720p"
+                            elif height >= 480:
+                                return "480p"
+                            else:
+                                return f"{height}p"
+                        return "Unknown"
 
                     # Build session data with stable identifier
                     emby_session_id = session.get("Id")
+                    playing_resolution = get_resolution()
+                    source_resolution = get_source_resolution()
+
                     session_data = {
                         "session_id": emby_session_id,
                         "user_id": session.get("UserId"),
@@ -254,9 +300,9 @@ class EmbyProvider(BaseProvider):
                         "runtime": item.get("RunTimeTicks", 0) // 10000000 if item.get("RunTimeTicks") else 0,
                         "library_section": "Unknown Library",  # Emby doesn't provide this in session data
 
-                        # Streaming details
+                        # Streaming details - show what's actually playing
                         "video_decision": "transcode" if is_transcoding else play_method,
-                        "original_resolution": get_resolution(),
+                        "original_resolution": playing_resolution,  # This shows what's being played
                         "original_bitrate": str(video_stream.get("BitRate", 0) // 1000) if video_stream.get("BitRate") else "0",
                         "stream_bitrate": str(session_bandwidth_kbps),
                         "video_codec": transcoding_info.get("VideoCodec", video_stream.get("Codec", "Unknown")) if transcoding_info else video_stream.get("Codec", "Unknown"),
@@ -272,8 +318,12 @@ class EmbyProvider(BaseProvider):
                         "transcode_hw_decode_title": hw_decode_title,
                         "transcode_hw_encode_title": hw_encode_title,
 
-                        # Quality profile for UI display
-                        "quality_profile": get_resolution(),
+                        # HDR detection
+                        "is_hdr": video_stream.get("ColorTransfer") == "smpte2084" or video_stream.get("VideoRange") in ["HDR", "HDR10"],
+                        "is_dolby_vision": video_stream.get("VideoRange") == "DolbyVision" or video_stream.get("ExtendedVideoType") == "DolbyVision",
+
+                        # Quality profile for UI display (with HDR) - use playing resolution
+                        "quality_profile": self._build_quality_profile(playing_resolution, video_stream),
 
                         # Product info
                         "product": session.get("Client", "Unknown"),
@@ -313,6 +363,27 @@ class EmbyProvider(BaseProvider):
 
         except Exception:
             return []
+
+    def _build_quality_profile(self, resolution: str, video_stream: Dict) -> str:
+        """Build a quality profile string including HDR information"""
+        parts = []
+
+        # Add resolution
+        if resolution and resolution != "Unknown":
+            parts.append(resolution)
+
+        # Check for HDR/Dolby Vision
+        if video_stream.get("VideoRange") == "DolbyVision" or video_stream.get("ExtendedVideoType") == "DolbyVision":
+            parts.append("DoVi")
+        elif video_stream.get("ColorTransfer") == "smpte2084" or video_stream.get("VideoRange") in ["HDR", "HDR10"]:
+            parts.append("HDR")
+
+        # Add video codec
+        codec = video_stream.get("Codec", "").upper()
+        if codec:
+            parts.append(codec)
+
+        return " ".join(parts) if parts else "Unknown"
 
     async def get_version_info(self) -> Dict[str, Any]:
         """Get Emby server version information"""

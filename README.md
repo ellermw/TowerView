@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-**Version 2.3.1 - Bug Fixes & UI Improvements**
+**Version 2.3.2 - Enhanced HDR Detection & Resolution Reporting**
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -417,7 +417,19 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.1 (Current)
+### Version 2.3.2 (Current)
+- **HDR & Resolution Improvements**:
+  - Fixed HDR detection for all media server types (Plex, Jellyfin, Emby)
+  - Added comprehensive HDR field detection including HDR10, Dolby Vision, and HDR10+
+  - Fixed resolution reporting to show actual playing resolution (direct play vs transcoded)
+  - Improved 4K detection to support cinema 4K formats (2048p) and non-standard resolutions
+  - Fixed Emby resolution detection for DirectStream vs Transcode scenarios
+- **Bug Fixes**:
+  - Fixed admin login 500 error caused by bcrypt compatibility issue
+  - Fixed Pydantic schema stripping HDR fields from API responses
+  - Corrected resolution threshold logic for 4K content (now >= 2000 pixels)
+
+### Version 2.3.1
 - **Bug Fixes**:
   - Fixed media users unable to see active sessions on dashboard
   - Fixed Jellyfin authentication issues with special characters in passwords
