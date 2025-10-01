@@ -33,12 +33,27 @@ interface ServerUser {
   server_type?: string
 }
 
+interface Library {
+  id: string
+  name: string
+  title?: string
+  type?: string
+}
+
 export default function UsersList() {
   const [refreshInterval] = useState(30000) // 30 seconds
   const [collapsedServers, setCollapsedServers] = useState<Set<string>>(new Set())
   const [selectedUser, setSelectedUser] = useState<ServerUser | null>(null)
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [libraries, setLibraries] = useState<Library[]>([])
+  const [selectedLibraries, setSelectedLibraries] = useState<string[]>([])
+  const [librariesLoading, setLibrariesLoading] = useState(false)
+  const [librariesSaving, setLibrariesSaving] = useState(false)
 
   const { data: users = [], isLoading, error } = useQuery<ServerUser[]>(
     'admin-users',
@@ -113,12 +128,108 @@ export default function UsersList() {
 
   const openPasswordModal = (user: ServerUser) => {
     setSelectedUser(user)
+    setNewPassword('')
+    setConfirmPassword('')
+    setPasswordError('')
     setIsPasswordModalOpen(true)
   }
 
-  const openLibraryModal = (user: ServerUser) => {
+  const openLibraryModal = async (user: ServerUser) => {
     setSelectedUser(user)
     setIsLibraryModalOpen(true)
+
+    // Only load libraries for Emby/Jellyfin
+    if (user.server_type?.toLowerCase() !== 'plex' && user.server_id) {
+      setLibrariesLoading(true)
+      try {
+        // Fetch available libraries
+        const response = await api.get(`/admin/servers/${user.server_id}/libraries`)
+        setLibraries(response.data)
+
+        // Fetch user's current library access
+        console.log('Fetching library access for user:', user.user_id, 'on server:', user.server_id)
+        const accessResponse = await api.get(`/admin/servers/${user.server_id}/users/${user.user_id}/libraries`)
+        console.log('Library access response:', accessResponse.data)
+        if (accessResponse.data) {
+          const accessData = accessResponse.data
+          // Pre-select the libraries the user already has access to
+          if (accessData.all_libraries && response.data) {
+            // If user has access to all libraries, select all
+            console.log('User has access to all libraries')
+            setSelectedLibraries(response.data.map((lib: Library) => lib.id))
+          } else {
+            // Otherwise, select only the enabled libraries
+            console.log('User has access to specific libraries:', accessData.library_ids)
+            setSelectedLibraries(accessData.library_ids || [])
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load libraries:', error)
+        setSelectedLibraries([])
+      } finally {
+        setLibrariesLoading(false)
+      }
+    } else {
+      // For Plex or if no server_id, clear the selection
+      setSelectedLibraries([])
+    }
+  }
+
+  const handlePasswordChange = async () => {
+    if (!selectedUser || !selectedUser.server_id) return
+
+    // Validate passwords
+    if (!newPassword) {
+      setPasswordError('Password is required')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match')
+      return
+    }
+    if (newPassword.length < 8) {
+      setPasswordError('Password must be at least 8 characters')
+      return
+    }
+
+    setPasswordLoading(true)
+    setPasswordError('')
+
+    try {
+      await api.post(
+        `/admin/servers/${selectedUser.server_id}/users/${selectedUser.user_id}/password`,
+        { new_password: newPassword }
+      )
+
+      setIsPasswordModalOpen(false)
+      setSelectedUser(null)
+      // Show success message (you could add a toast notification here)
+    } catch (error: any) {
+      setPasswordError(error.response?.data?.detail || 'Failed to change password')
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
+
+  const handleLibraryAccessSave = async () => {
+    if (!selectedUser || !selectedUser.server_id) return
+
+    setLibrariesSaving(true)
+
+    try {
+      await api.post(
+        `/admin/servers/${selectedUser.server_id}/users/${selectedUser.user_id}/libraries`,
+        selectedLibraries
+      )
+
+      setIsLibraryModalOpen(false)
+      setSelectedUser(null)
+      // Show success message
+    } catch (error: any) {
+      console.error('Failed to save library access:', error)
+    } finally {
+      setLibrariesSaving(false)
+    }
   }
 
   if (isLoading) {
@@ -350,6 +461,13 @@ export default function UsersList() {
             <div className="text-sm text-slate-600 dark:text-slate-400 mb-4">
               Server: {selectedUser.server_name} ({selectedUser.server_type})
             </div>
+
+            {passwordError && (
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-600 dark:text-red-400">
+                {passwordError}
+              </div>
+            )}
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -357,8 +475,11 @@ export default function UsersList() {
                 </label>
                 <input
                   type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
                   className="mt-1 block w-full border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-slate-700 dark:text-white"
-                  placeholder="Enter new password"
+                  placeholder="Enter new password (min 8 characters)"
+                  disabled={passwordLoading}
                 />
               </div>
               <div>
@@ -367,8 +488,11 @@ export default function UsersList() {
                 </label>
                 <input
                   type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
                   className="mt-1 block w-full border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-slate-700 dark:text-white"
                   placeholder="Confirm new password"
+                  disabled={passwordLoading}
                 />
               </div>
             </div>
@@ -379,13 +503,16 @@ export default function UsersList() {
                   setSelectedUser(null)
                 }}
                 className="btn btn-secondary"
+                disabled={passwordLoading}
               >
                 Cancel
               </button>
               <button
+                onClick={handlePasswordChange}
                 className="btn btn-primary"
+                disabled={passwordLoading || !newPassword || !confirmPassword}
               >
-                Change Password
+                {passwordLoading ? 'Changing...' : 'Change Password'}
               </button>
             </div>
           </div>
@@ -403,24 +530,86 @@ export default function UsersList() {
               Server: {selectedUser.server_name} ({selectedUser.server_type})
             </div>
 
-            <div className="space-y-2">
-              <div className="text-center text-slate-500 dark:text-slate-400 py-8">
-                <FolderIcon className="h-12 w-12 mx-auto mb-2 text-slate-400" />
-                <p>Library access management will be available soon</p>
-                <p className="text-sm mt-2">This feature will allow you to control which libraries this user can access</p>
+            {selectedUser.server_type?.toLowerCase() === 'plex' ? (
+              <div className="space-y-2">
+                <div className="text-center text-slate-500 dark:text-slate-400 py-8">
+                  <FolderIcon className="h-12 w-12 mx-auto mb-2 text-slate-400" />
+                  <p>Library access management is not available for Plex servers</p>
+                  <p className="text-sm mt-2">Plex library sharing must be managed through the Plex web interface</p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-2">
+                {librariesLoading ? (
+                  <div className="text-center py-8">
+                    <div className="text-slate-600 dark:text-slate-400">Loading libraries...</div>
+                  </div>
+                ) : libraries.length === 0 ? (
+                  <div className="text-center text-slate-500 dark:text-slate-400 py-8">
+                    <FolderIcon className="h-12 w-12 mx-auto mb-2 text-slate-400" />
+                    <p>No libraries found on this server</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                      Select which libraries this user can access:
+                    </div>
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {libraries.map((library) => (
+                        <label
+                          key={library.id}
+                          className="flex items-center p-3 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded"
+                            checked={selectedLibraries.includes(library.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedLibraries([...selectedLibraries, library.id])
+                              } else {
+                                setSelectedLibraries(selectedLibraries.filter(id => id !== library.id))
+                              }
+                            }}
+                          />
+                          <div className="ml-3 flex-1">
+                            <div className="text-sm font-medium text-slate-900 dark:text-white">
+                              {library.name}
+                            </div>
+                            {library.type && (
+                              <div className="text-xs text-slate-500 dark:text-slate-400">
+                                Type: {library.type}
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
-            <div className="mt-6 flex justify-end">
+            <div className="mt-6 flex justify-end space-x-3">
               <button
                 onClick={() => {
                   setIsLibraryModalOpen(false)
                   setSelectedUser(null)
                 }}
-                className="btn btn-primary"
+                className="btn btn-secondary"
+                disabled={librariesSaving}
               >
-                Close
+                Cancel
               </button>
+              {selectedUser.server_type?.toLowerCase() !== 'plex' && libraries.length > 0 && (
+                <button
+                  onClick={handleLibraryAccessSave}
+                  className="btn btn-primary"
+                  disabled={librariesSaving || librariesLoading}
+                >
+                  {librariesSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              )}
             </div>
           </div>
         </div>
