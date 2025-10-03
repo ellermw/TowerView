@@ -27,7 +27,7 @@ class BandwidthHistory(BaseModel):
 # Use DashboardAnalyticsResponse as AnalyticsResponse
 AnalyticsResponse = DashboardAnalyticsResponse
 from ....services.analytics_service import AnalyticsService
-from ....models.permissions import UserPermission
+from ....models.user_permission import UserPermission
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

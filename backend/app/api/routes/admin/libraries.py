@@ -13,7 +13,7 @@ from ....services.server_service import ServerService
 from ....services.user_service import UserService
 from ....services.audit_service import AuditService
 from ....providers.factory import ProviderFactory
-from ....models.permissions import UserPermission
+from ....models.user_permission import UserPermission
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

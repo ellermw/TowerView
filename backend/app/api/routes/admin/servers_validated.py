@@ -148,7 +148,7 @@ async def list_servers(
         servers = server_service.get_servers_by_owner(current_user.id)
     else:
         # Local users only see servers they have permission for
-        from ....models.permissions import UserPermission
+        from ....models.user_permission import UserPermission
         permissions = db.query(UserPermission).filter(
             UserPermission.user_id == current_user.id,
             UserPermission.can_view_servers == True
@@ -200,7 +200,7 @@ async def get_server(
             )
     else:
         # Local users need specific permission
-        from ....models.permissions import UserPermission
+        from ....models.user_permission import UserPermission
         permission = db.query(UserPermission).filter(
             UserPermission.user_id == current_user.id,
             UserPermission.server_id == server_id
