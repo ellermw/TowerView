@@ -620,21 +620,37 @@ export default function AdminHome() {
     }
 
     // Find the max and min individual server bandwidths (not total)
-    const allServerBandwidths = bandwidthHistory.flatMap(point =>
-      Object.values(point.serverBandwidths).filter(bw => bw > 0)
-    )
+    // Get all individual server bandwidth values across all time points
+    const allServerBandwidthsRaw: number[] = []
 
-    const actualMaxBandwidth = allServerBandwidths.length > 0
-      ? Math.max(...allServerBandwidths)
-      : 100000 // Default 100 Mbps if no data
+    bandwidthHistory.forEach(point => {
+      Object.entries(point.serverBandwidths || {}).forEach(([serverName, bandwidth]) => {
+        // Make sure we're not accidentally including a "total" entry
+        if (serverName.toLowerCase() !== 'total' && bandwidth > 0) {
+          allServerBandwidthsRaw.push(bandwidth)
+        }
+      })
+    })
 
-    const actualMinBandwidth = allServerBandwidths.length > 0
-      ? Math.min(...allServerBandwidths)
-      : 0
+    let actualMaxBandwidth = 100000 // Default 100 Mbps if no data
+    let actualMinBandwidth = 0
+
+    if (allServerBandwidthsRaw.length > 0) {
+      actualMaxBandwidth = Math.max(...allServerBandwidthsRaw)
+      actualMinBandwidth = Math.min(...allServerBandwidthsRaw)
+    }
 
     // Set Y-axis max to 20% above highest server, min to 20% below lowest
-    const maxBandwidth = actualMaxBandwidth * 1.2
-    const minBandwidth = Math.max(0, actualMinBandwidth * 0.8)
+    // But never use 0 as min if we have actual data
+    const scaledMaxBandwidth = actualMaxBandwidth * 1.2
+    const scaledMinBandwidth = actualMinBandwidth > 0 ? actualMinBandwidth * 0.8 : 0
+
+    // If we have data but min would be 0, set it to something reasonable
+    const minBandwidth = (actualMaxBandwidth > 0 && scaledMinBandwidth === 0)
+      ? actualMaxBandwidth * 0.1  // Use 10% of max as min if we have data but min is 0
+      : scaledMinBandwidth
+
+    const maxBandwidth = scaledMaxBandwidth
 
     // Ensure we have a reasonable range for the graph
     const bandwidthRange = maxBandwidth - minBandwidth
