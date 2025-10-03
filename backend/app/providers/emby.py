@@ -12,17 +12,17 @@ class EmbyProvider(BaseProvider):
         # Support multiple credential field names for Emby
         self.api_key = credentials.get("api_key") or credentials.get("token") or credentials.get("api_token")
         self.admin_token = credentials.get("admin_token") or credentials.get("api_token") or credentials.get("token")
-        print(f"Emby provider initialized - api_key: {'Yes' if self.api_key else 'No'}, admin_token: {'Yes' if self.admin_token else 'No'}")
-        print(f"Available credential keys: {list(credentials.keys())}")
+        logger.debug(f"Emby provider initialized - has_api_key: {'Yes' if self.api_key else 'No'}, has_admin_token: {'Yes' if self.admin_token else 'No'}")
+        logger.debug(f"Available credential keys: {list(credentials.keys())}")
 
     async def connect(self) -> bool:
         """Test connection to Emby server"""
         try:
-            print(f"Testing Emby connection to: {self.base_url}")
+            logger.debug(f"Testing Emby connection to: {self.base_url}")
             if self.api_key:
-                print(f"Using API key: {self.api_key[:10]}...{self.api_key[-10:] if len(self.api_key) > 20 else 'N/A'}")
+                logger.debug(f"Using API key for authentication")
             else:
-                print("No API key provided")
+                logger.warning("No API key provided")
                 return False
 
             async with httpx.AsyncClient(verify=False) as client:
@@ -31,7 +31,7 @@ class EmbyProvider(BaseProvider):
                 url = f"{base_url}/System/Info"
                 headers = {"X-Emby-Token": self.api_key} if self.api_key else {}
 
-                print(f"Emby connection URL: {url}")
+                logger.debug(f"Emby connection URL: {url}")
 
                 response = await client.get(
                     url,
@@ -39,15 +39,15 @@ class EmbyProvider(BaseProvider):
                     timeout=10.0
                 )
 
-                print(f"Emby connection test - Status: {response.status_code}")
+                logger.debug(f"Emby connection test - Status: {response.status_code}")
                 if response.status_code != 200:
-                    print(f"Emby connection error: {response.text[:200]}")
+                    logger.warning(f"Emby connection error: {response.text[:200]}")
                 else:
-                    print("Emby connection successful")
+                    logger.info("Emby connection successful")
 
                 return response.status_code == 200
         except Exception as e:
-            print(f"Emby connection error: {e}")
+            logger.error(f"Emby connection error: {e}")
             return False
 
     async def authenticate_user(self, username: str, password: str) -> Optional[Dict[str, Any]]:
@@ -79,7 +79,7 @@ class EmbyProvider(BaseProvider):
                 )
 
                 if response.status_code != 200:
-                    print(f"Emby auth failed: {response.status_code} - {response.text}")
+                    logger.warning(f"Emby auth failed: {response.status_code} - {response.text}")
                     return None
 
                 data = response.json()
@@ -93,7 +93,7 @@ class EmbyProvider(BaseProvider):
                 }
 
         except Exception as e:
-            print(f"Emby authentication error: {str(e)}")
+            logger.error(f"Emby authentication error: {str(e)}")
             return None
 
     async def list_active_sessions(self) -> List[Dict[str, Any]]:
@@ -102,7 +102,7 @@ class EmbyProvider(BaseProvider):
             async with httpx.AsyncClient(verify=False) as client:
                 base_url = self.base_url.rstrip('/')
                 url = f"{base_url}/Sessions"
-                print(f"Fetching Emby sessions from: {url}")
+                logger.debug(f"Fetching Emby sessions from: {url}")
 
                 response = await client.get(
                     url,
@@ -110,9 +110,9 @@ class EmbyProvider(BaseProvider):
                     timeout=10.0
                 )
 
-                print(f"Emby sessions response - Status: {response.status_code}")
+                logger.debug(f"Emby sessions response - Status: {response.status_code}")
                 if response.status_code != 200:
-                    print(f"Emby sessions error: {response.text}")
+                    logger.warning(f"Emby sessions error: {response.text}")
                     return []
 
                 sessions_data = response.json()
@@ -122,7 +122,7 @@ class EmbyProvider(BaseProvider):
                 for session in sessions_data:
                     # Skip monitoring tool sessions
                     if session.get("Client") == "TowerView":
-                        print(f"Skipping TowerView monitoring session {session.get('Id')}")
+                        logger.debug(f"Skipping TowerView monitoring session {session.get('Id')}")
                         continue
 
                     # Only process sessions with actual media playback
@@ -209,7 +209,7 @@ class EmbyProvider(BaseProvider):
                     # Convert bits per second to kbps
                     session_bandwidth_kbps = session_bitrate // 1000 if session_bitrate else 0
 
-                    print(f"Emby session bandwidth calculation: {session_bitrate} -> {session_bandwidth_kbps} kbps")
+                    logger.debug(f"Emby session bandwidth calculation: {session_bitrate} -> {session_bandwidth_kbps} kbps")
 
                     # Determine if this is transcoding and if it's hardware accelerated
                     play_method = play_state.get("PlayMethod", "").lower()
@@ -224,7 +224,7 @@ class EmbyProvider(BaseProvider):
                         video_codec = transcoding_info.get("VideoCodec", "").lower()
 
                         # Log what we're getting for debugging
-                        print(f"Emby TranscodingInfo - VideoCodec: '{transcoding_info.get('VideoCodec')}', IsVideoDirect: {transcoding_info.get('IsVideoDirect')}, Full info: {transcoding_info}")
+                        logger.debug(f"Emby TranscodingInfo - VideoCodec: '{transcoding_info.get('VideoCodec')}', IsVideoDirect: {transcoding_info.get('IsVideoDirect')}, Full info: {transcoding_info}")
 
                         # Common hardware codec suffixes and indicators
                         hw_codecs = ["_vaapi", "_qsv", "_nvenc", "_videotoolbox", "_v4l2m2m", "_amf", "h264_vaapi", "h264_qsv", "h264_nvenc", "hevc_vaapi", "hevc_qsv", "hevc_nvenc"]
@@ -497,14 +497,14 @@ class EmbyProvider(BaseProvider):
                     return False
 
             return False
-        except:
+        except (ValueError, IndexError, AttributeError):
             return False
 
     async def list_users(self) -> List[Dict[str, Any]]:
         """Get all Emby users"""
         try:
             if not self.api_key:
-                print("No API key available for listing Emby users")
+                logger.warning("No API key available for listing Emby users")
                 return []
 
             async with httpx.AsyncClient(verify=False) as client:
@@ -535,7 +535,7 @@ class EmbyProvider(BaseProvider):
                 return users
 
         except Exception as e:
-            print(f"Error fetching Emby users: {e}")
+            logger.error(f"Error fetching Emby users: {e}")
             return []
 
     async def get_user(self, provider_user_id: str) -> Optional[Dict[str, Any]]:
@@ -567,7 +567,7 @@ class EmbyProvider(BaseProvider):
     async def terminate_session(self, provider_session_id: str) -> bool:
         """Terminate an Emby session"""
         try:
-            print(f"Attempting to terminate Emby session: {provider_session_id}")
+            logger.info(f"Attempting to terminate Emby session: {provider_session_id}")
             async with httpx.AsyncClient(verify=False) as client:
                 base_url = self.base_url.rstrip('/')
                 headers = {
@@ -583,7 +583,7 @@ class EmbyProvider(BaseProvider):
                     "TimeoutMs": 5000
                 }
 
-                print(f"Emby - Sending message to session: {provider_session_id}")
+                logger.debug(f"Emby - Sending message to session: {provider_session_id}")
                 try:
                     message_response = await client.post(
                         message_url,
@@ -591,13 +591,13 @@ class EmbyProvider(BaseProvider):
                         headers=headers,
                         timeout=10.0
                     )
-                    print(f"Message response - Status: {message_response.status_code}")
+                    logger.debug(f"Message response - Status: {message_response.status_code}")
                 except Exception as msg_error:
-                    print(f"Message send error (non-critical): {msg_error}")
+                    logger.debug(f"Message send error (non-critical): {msg_error}")
 
                 # Method 1: Try the Playing/Stop endpoint (similar to Jellyfin)
                 stop_url = f"{base_url}/Sessions/{provider_session_id}/Playing/Stop"
-                print(f"Emby termination - Method 1: Sending stop to {stop_url}")
+                logger.debug(f"Emby termination - Method 1: Sending stop to {stop_url}")
 
                 try:
                     stop_response = await client.post(
@@ -605,19 +605,19 @@ class EmbyProvider(BaseProvider):
                         headers=headers,
                         timeout=10.0
                     )
-                    print(f"Stop response - Status: {stop_response.status_code}")
+                    logger.debug(f"Stop response - Status: {stop_response.status_code}")
 
                     if stop_response.status_code in [200, 204, 404]:
-                        print("Method 1 successful")
+                        logger.debug("Method 1 successful")
                         return True
                 except Exception as e:
-                    print(f"Method 1 failed: {e}")
+                    logger.debug(f"Method 1 failed: {e}")
 
                 # Method 2: Try sending a general Stop command
                 command_url = f"{base_url}/Sessions/{provider_session_id}/Command"
                 command_data = {"Name": "Stop"}
 
-                print(f"Emby termination - Method 2: Sending command to {command_url}")
+                logger.debug(f"Emby termination - Method 2: Sending command to {command_url}")
                 command_response = await client.post(
                     command_url,
                     json=command_data,
@@ -625,17 +625,17 @@ class EmbyProvider(BaseProvider):
                     timeout=10.0
                 )
 
-                print(f"Command response - Status: {command_response.status_code}, Text: {command_response.text[:200] if command_response.text else 'Empty'}")
+                logger.debug(f"Command response - Status: {command_response.status_code}, Text: {command_response.text[:200] if command_response.text else 'Empty'}")
 
                 if command_response.status_code in [200, 204, 404]:
-                    print("Method 2 successful")
+                    logger.debug("Method 2 successful")
                     return True
 
                 # Method 3: Try the System/Sessions/Logout endpoint
                 logout_url = f"{base_url}/System/Sessions/Logout"
                 params = {"Id": provider_session_id}
 
-                print(f"Emby termination - Method 3: Logout via {logout_url} with session ID {provider_session_id}")
+                logger.debug(f"Emby termination - Method 3: Logout via {logout_url} with session ID {provider_session_id}")
                 logout_response = await client.post(
                     logout_url,
                     params=params,
@@ -643,14 +643,14 @@ class EmbyProvider(BaseProvider):
                     timeout=10.0
                 )
 
-                print(f"Logout response - Status: {logout_response.status_code}")
+                logger.debug(f"Logout response - Status: {logout_response.status_code}")
                 success = logout_response.status_code in [200, 204, 404]
 
-                print(f"Emby termination final result: {success}")
+                logger.info(f"Emby termination final result: {success}")
                 return success
 
         except Exception as e:
-            print(f"Error terminating Emby session {provider_session_id}: {e}")
+            logger.error(f"Error terminating Emby session {provider_session_id}: {e}")
             return False
 
     async def modify_user(self, provider_user_id: str, changes: Dict[str, Any]) -> bool:

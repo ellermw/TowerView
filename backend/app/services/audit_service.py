@@ -4,6 +4,9 @@ from fastapi import Request
 from ..models.audit_log import AuditLog
 from ..models.user import User, UserType
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class AuditService:
@@ -54,7 +57,7 @@ class AuditService:
 
         except Exception as e:
             # Don't let audit logging failures break the main operation
-            print(f"Failed to create audit log: {e}")
+            logger.error(f"Failed to create audit log: {e}")
             db.rollback()
 
     @staticmethod

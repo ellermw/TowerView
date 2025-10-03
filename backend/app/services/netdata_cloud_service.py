@@ -83,10 +83,8 @@ class NetdataCloudService:
         }
 
         try:
-            print(f"DEBUG: Making {method} request to {url}")
-            print(f"DEBUG: Headers being sent: {headers}")
-            logger.info(f"Making {method} request to {url}")
-            logger.info(f"Headers being sent: {headers}")
+            logger.debug(f"Making {method} request to Netdata Cloud API")
+            logger.info(f"Making {method} request to Netdata Cloud API")
             if method == "GET":
                 async with self.session.get(url, headers=headers) as response:
                     response_text = await response.text()
@@ -112,7 +110,7 @@ class NetdataCloudService:
                     if response.status == 200:
                         try:
                             return await response.json() if response_text else {}
-                        except:
+                        except (ValueError, TypeError, json.JSONDecodeError):
                             return {}
                     else:
                         logger.error(f"Netdata API error: {response.status} - {response_text}")
@@ -476,8 +474,8 @@ class NetdataCloudService:
     async def test_connection(self, token: str) -> bool:
         """Test if the API token is valid"""
         try:
-            print(f"DEBUG: Testing connection with token: {token[:50]}...")
-            logger.info(f"Testing connection with token: {token[:20]}...")
+            logger.debug(f"Testing connection with token: [REDACTED]")
+            logger.info(f"Testing Netdata Cloud API connection")
             # Try to get spaces - this is a simple endpoint that should work with a valid token
             spaces = await self.get_spaces(token)
             logger.info(f"Spaces response type: {type(spaces)}, content: {spaces}")

@@ -12,13 +12,13 @@ class JellyfinProvider(BaseProvider):
         # Support multiple credential field names
         self.api_key = credentials.get("api_key") or credentials.get("api_token") or credentials.get("token")
         self.admin_token = credentials.get("admin_token") or credentials.get("api_token") or credentials.get("token")
-        print(f"Jellyfin provider initialized with credentials: {list(credentials.keys())}")
+        logger.debug(f"Jellyfin provider initialized with credentials: {list(credentials.keys())}")
 
     async def connect(self) -> bool:
         """Test connection to Jellyfin server"""
         try:
-            print(f"Testing Jellyfin connection to: {self.base_url}")
-            print(f"Using API key: {self.api_key[:10]}..." if self.api_key else "No API key provided")
+            logger.debug(f"Testing Jellyfin connection to: {self.base_url}")
+            logger.debug(f"Using API key: {self.api_key[:10]}..." if self.api_key else "No API key provided")
 
             async with httpx.AsyncClient(verify=False) as client:
                 # Ensure base_url doesn't end with slash to avoid double slashes
@@ -32,13 +32,13 @@ class JellyfinProvider(BaseProvider):
                     timeout=10.0
                 )
 
-                print(f"Jellyfin connection test - URL: {url}")
-                print(f"Response status: {response.status_code}")
-                print(f"Response text: {response.text[:200]}...")
+                logger.debug(f"Jellyfin connection test - URL: {url}")
+                logger.debug(f"Response status: {response.status_code}")
+                logger.debug(f"Response text: {response.text[:200]}...")
 
                 return response.status_code == 200
         except Exception as e:
-            print(f"Jellyfin connection error: {e}")
+            logger.error(f"Jellyfin connection error: {e}")
             return False
 
     async def authenticate_user(self, username: str, password: str) -> Optional[Dict[str, Any]]:
@@ -67,7 +67,7 @@ class JellyfinProvider(BaseProvider):
                 )
 
                 if response.status_code != 200:
-                    print(f"Jellyfin auth failed: {response.status_code} - {response.text}")
+                    logger.warning(f"Jellyfin auth failed: {response.status_code} - {response.text}")
                     return None
 
                 data = response.json()
@@ -81,7 +81,7 @@ class JellyfinProvider(BaseProvider):
                 }
 
         except Exception as e:
-            print(f"Jellyfin authentication error: {str(e)}")
+            logger.error(f"Jellyfin authentication error: {str(e)}")
             return None
 
     async def list_active_sessions(self) -> List[Dict[str, Any]]:
@@ -90,7 +90,7 @@ class JellyfinProvider(BaseProvider):
             async with httpx.AsyncClient(verify=False) as client:
                 base_url = self.base_url.rstrip('/')
                 url = f"{base_url}/Sessions"
-                print(f"Fetching Jellyfin sessions from: {url}")
+                logger.debug(f"Fetching Jellyfin sessions from: {url}")
 
                 response = await client.get(
                     url,
@@ -98,19 +98,19 @@ class JellyfinProvider(BaseProvider):
                     timeout=10.0
                 )
 
-                print(f"Jellyfin sessions response - Status: {response.status_code}")
+                logger.debug(f"Jellyfin sessions response - Status: {response.status_code}")
                 if response.status_code != 200:
-                    print(f"Jellyfin sessions error: {response.text}")
+                    logger.warning(f"Jellyfin sessions error: {response.text}")
                 else:
-                    print(f"Jellyfin sessions data: {response.text[:800]}...")
+                    logger.debug(f"Jellyfin sessions data: {response.text[:800]}...")
                     # Let's examine the full session structure
                     session_json = response.json()
                     if session_json:
-                        print(f"First session structure keys: {list(session_json[0].keys())}")
+                        logger.debug(f"First session structure keys: {list(session_json[0].keys())}")
                         if 'NowPlayingItem' in session_json[0]:
-                            print(f"NowPlayingItem keys: {list(session_json[0]['NowPlayingItem'].keys())}")
+                            logger.debug(f"NowPlayingItem keys: {list(session_json[0]['NowPlayingItem'].keys())}")
                         else:
-                            print("No NowPlayingItem found - this is why media shows as unknown")
+                            logger.debug("No NowPlayingItem found - this is why media shows as unknown")
 
                 if response.status_code != 200:
                     return []
@@ -125,10 +125,10 @@ class JellyfinProvider(BaseProvider):
 
                     # Skip sessions without NowPlayingItem - these are just idle connections
                     if not item:
-                        print(f"Skipping session {session.get('Id')} - no NowPlayingItem")
+                        logger.debug(f"Skipping session {session.get('Id')} - no NowPlayingItem")
                         continue
 
-                    print(f"Processing session with media: {item.get('Name')} of type {item.get('Type')}")
+                    logger.debug(f"Processing session with media: {item.get('Name')} of type {item.get('Type')}")
 
                     # Get media info with fallbacks
                     media_title = item.get("Name") or item.get("OriginalTitle") or "Unknown Media"
@@ -220,7 +220,7 @@ class JellyfinProvider(BaseProvider):
                         # Might be in different units, divide further
                         session_bandwidth_kbps = session_bandwidth_kbps // 1000
 
-                    print(f"Session bandwidth calculation: {session_bitrate} -> {session_bandwidth_kbps} kbps")
+                    logger.debug(f"Session bandwidth calculation: {session_bitrate} -> {session_bandwidth_kbps} kbps")
 
                     # Determine if this is transcoding and if it's hardware accelerated
                     play_method = play_state.get("PlayMethod", "").lower()
@@ -235,7 +235,7 @@ class JellyfinProvider(BaseProvider):
                         audio_codec = transcoding_info.get("AudioCodec", "").lower()
 
                         # Log what we're getting for debugging
-                        print(f"Jellyfin TranscodingInfo - VideoCodec: '{transcoding_info.get('VideoCodec')}', IsVideoDirect: {transcoding_info.get('IsVideoDirect')}, Full info: {transcoding_info}")
+                        logger.debug(f"Jellyfin TranscodingInfo - VideoCodec: '{transcoding_info.get('VideoCodec')}', IsVideoDirect: {transcoding_info.get('IsVideoDirect')}, Full info: {transcoding_info}")
 
                         # Common hardware codec suffixes and indicators
                         hw_codecs = ["_vaapi", "_qsv", "_nvenc", "_videotoolbox", "_v4l2m2m", "_amf", "h264_vaapi", "h264_qsv", "h264_nvenc", "hevc_vaapi", "hevc_qsv", "hevc_nvenc"]
@@ -340,7 +340,7 @@ class JellyfinProvider(BaseProvider):
                         session_data["parent_title"] = f"Season {item.get('ParentIndexNumber', '?')}"
 
                     sessions.append(session_data)
-                    print(f"Added session: {media_title} ({media_type})")
+                    logger.debug(f"Added session: {media_title} ({media_type})")
 
                 return sessions
 
@@ -374,7 +374,7 @@ class JellyfinProvider(BaseProvider):
             async with httpx.AsyncClient(verify=False) as client:
                 base_url = self.base_url.rstrip('/')
                 url = f"{base_url}/Users"
-                print(f"Fetching Jellyfin users from: {url}")
+                logger.debug(f"Fetching Jellyfin users from: {url}")
 
                 response = await client.get(
                     url,
@@ -382,12 +382,12 @@ class JellyfinProvider(BaseProvider):
                     timeout=10.0
                 )
 
-                print(f"Jellyfin users response - Status: {response.status_code}")
+                logger.debug(f"Jellyfin users response - Status: {response.status_code}")
                 if response.status_code != 200:
-                    print(f"Jellyfin users error: {response.text}")
+                    logger.warning(f"Jellyfin users error: {response.text}")
                     return []
                 else:
-                    print(f"Jellyfin users data: {response.text[:500]}...")
+                    logger.debug(f"Jellyfin users data: {response.text[:500]}...")
 
                 if response.status_code != 200:
                     return []
@@ -412,7 +412,7 @@ class JellyfinProvider(BaseProvider):
                 return users
 
         except Exception as e:
-            print(f"Error fetching Jellyfin users: {e}")
+            logger.error(f"Error fetching Jellyfin users: {e}")
             return []
 
     async def get_user(self, provider_user_id: str) -> Optional[Dict[str, Any]]:
@@ -444,7 +444,7 @@ class JellyfinProvider(BaseProvider):
     async def terminate_session(self, provider_session_id: str) -> bool:
         """Terminate a Jellyfin session"""
         try:
-            print(f"Attempting to terminate Jellyfin session: {provider_session_id}")
+            logger.info(f"Attempting to terminate Jellyfin session: {provider_session_id}")
             async with httpx.AsyncClient(verify=False) as client:
                 base_url = self.base_url.rstrip('/')
 
@@ -462,18 +462,18 @@ class JellyfinProvider(BaseProvider):
                     "TimeoutMs": 5000
                 }
 
-                print(f"Jellyfin - Sending stop message to session: {provider_session_id}")
+                logger.debug(f"Jellyfin - Sending stop message to session: {provider_session_id}")
                 message_response = await client.post(
                     message_url,
                     json=message_data,
                     headers=headers,
                     timeout=10.0
                 )
-                print(f"Message response - Status: {message_response.status_code}")
+                logger.debug(f"Message response - Status: {message_response.status_code}")
 
                 # Now send the actual stop command using the Playstate endpoint
                 stop_url = f"{base_url}/Sessions/{provider_session_id}/Playing/Stop"
-                print(f"Jellyfin termination - Sending stop command to: {stop_url}")
+                logger.debug(f"Jellyfin termination - Sending stop command to: {stop_url}")
 
                 # The stop endpoint doesn't need a body
                 stop_response = await client.post(
@@ -482,14 +482,14 @@ class JellyfinProvider(BaseProvider):
                     timeout=10.0
                 )
 
-                print(f"Jellyfin stop response - Status: {stop_response.status_code}, Text: {stop_response.text[:200] if stop_response.text else 'Empty'}")
+                logger.debug(f"Jellyfin stop response - Status: {stop_response.status_code}, Text: {stop_response.text[:200] if stop_response.text else 'Empty'}")
 
                 # Success can be 200, 204, or even 404 (session already gone)
                 success = stop_response.status_code in [200, 204, 404]
 
                 if not success:
                     # Try alternative method using the general command endpoint
-                    print("First method failed, trying alternative command method")
+                    logger.debug("First method failed, trying alternative command method")
                     command_url = f"{base_url}/Sessions/{provider_session_id}/Command"
                     command_data = {"Name": "Stop"}
 
@@ -500,14 +500,14 @@ class JellyfinProvider(BaseProvider):
                         timeout=10.0
                     )
 
-                    print(f"Command response - Status: {command_response.status_code}")
+                    logger.debug(f"Command response - Status: {command_response.status_code}")
                     success = command_response.status_code in [200, 204, 404]
 
-                print(f"Jellyfin termination final result: {success}")
+                logger.info(f"Jellyfin termination final result: {success}")
                 return success
 
         except Exception as e:
-            print(f"Error terminating Jellyfin session {provider_session_id}: {e}")
+            logger.error(f"Error terminating Jellyfin session {provider_session_id}: {e}")
             return False
 
     async def modify_user(self, provider_user_id: str, changes: Dict[str, Any]) -> bool:
@@ -755,18 +755,18 @@ class JellyfinProvider(BaseProvider):
                 return {}
 
         except Exception as e:
-            print(f"Error getting Jellyfin version info: {e}")
+            logger.error(f"Error getting Jellyfin version info: {e}")
             return {}
 
     async def _get_latest_version(self, client: httpx.AsyncClient) -> Optional[str]:
         """Get the latest Jellyfin version from Docker Hub"""
         try:
-            print("Fetching Jellyfin latest version from Docker Hub...")
+            logger.info("Fetching Jellyfin latest version from Docker Hub...")
             response = await client.get(
                 "https://hub.docker.com/v2/repositories/jellyfin/jellyfin/tags?page_size=20",
                 timeout=10.0
             )
-            print(f"Docker Hub response status: {response.status_code}")
+            logger.debug(f"Docker Hub response status: {response.status_code}")
 
             if response.status_code == 200:
                 data = response.json()
@@ -793,19 +793,19 @@ class JellyfinProvider(BaseProvider):
                         parts = v.replace('-rc', '.').split('.')
                         return [int(x) if x.isdigit() else 0 for x in parts]
                     versions.sort(key=version_key, reverse=True)
-                    print(f"Found Jellyfin versions: {versions[:3]}, returning: {versions[0]}")
+                    logger.info(f"Found Jellyfin versions: {versions[:3]}, returning: {versions[0]}")
                     return versions[0]
                 else:
                     # Fallback to known latest stable if no tags found
-                    print("No versions found in Docker Hub, using fallback")
+                    logger.debug("No versions found in Docker Hub, using fallback")
                     return "10.10.7"  # Latest stable as of Sept 2024
 
-            print(f"Docker Hub returned non-200 status: {response.status_code}")
+            logger.debug(f"Docker Hub returned non-200 status: {response.status_code}")
             return None
 
         except Exception as e:
             # Docker Hub API error
-            print(f"Error fetching from Docker Hub: {e}")
+            logger.error(f"Error fetching from Docker Hub: {e}")
             return None
 
     def _compare_versions(self, current: str, latest: str) -> bool:

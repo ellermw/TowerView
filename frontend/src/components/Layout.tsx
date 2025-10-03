@@ -61,9 +61,6 @@ export default function Layout({ children }: LayoutProps) {
       // Servers - visible to all but functionality limited by manage_servers permission
       management.push({ name: 'Servers', href: '/admin/servers' })
 
-      // Log what's being added to management for debugging
-      console.log('Building management menu - isAdmin:', isAdmin, 'isLocalUser:', isLocalUser, 'permissions:', hasPermission)
-
       // Users - requires view_users permission
       if (isAdmin || hasPermission('view_users')) {
         management.push({ name: 'Users', href: '/admin/users' })
@@ -84,9 +81,6 @@ export default function Layout({ children }: LayoutProps) {
         nav.push({ name: 'Settings', href: '/admin/settings' })
       }
     }
-
-    console.log('Final management items:', management)
-    console.log('Final navigation items:', nav)
 
     setNavigation(nav)
     setManagementItems(management)

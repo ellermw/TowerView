@@ -68,9 +68,6 @@ export function useWebSocketMetrics({
       wsRef.current = ws
 
       ws.onopen = () => {
-        console.log('WebSocket connected, sending auth...')
-        console.log('Token available:', !!token)
-        console.log('Server IDs:', serverIds)
         setIsConnecting(false)
 
         // Send authentication and server list as first message
@@ -78,12 +75,10 @@ export function useWebSocketMetrics({
           token: token,
           servers: serverIds
         }
-        console.log('Sending auth message:', authMessage)
         ws.send(JSON.stringify(authMessage))
 
         setIsConnected(true)
         reconnectAttemptsRef.current = 0
-        console.log('WebSocket authenticated and ready')
       }
 
       ws.onmessage = (event) => {
@@ -93,42 +88,30 @@ export function useWebSocketMetrics({
           if (message.type === 'metrics_update' && message.data) {
             // Update metrics state with new data
             const newMetrics: Record<number, MetricsData> = {}
-            console.log('Received metrics update:', message.data.length, 'servers')
             message.data.forEach((serverMetrics: MetricsData) => {
               if (serverMetrics.server_id) {
-                console.log(`  Server ${serverMetrics.server_id}: CPU=${serverMetrics.cpu_usage}%, Mem=${serverMetrics.memory_usage}%`)
                 newMetrics[serverMetrics.server_id] = serverMetrics
               }
             })
-            console.log('Updated metrics state:', Object.keys(newMetrics))
             setMetrics(newMetrics)
           }
-        } catch (error) {
-          console.error('Error parsing WebSocket message:', error)
+        } catch (_error) {
+          // Error parsing message - silenced in production
         }
       }
 
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
+      ws.onerror = (_error) => {
         if (onError) {
           onError(new Error('WebSocket connection error'))
         }
       }
 
       ws.onclose = () => {
-        console.log('WebSocket disconnected')
         setIsConnected(false)
         setIsConnecting(false)
         wsRef.current = null
-
-        // Don't auto-reconnect - let the user control when to retry
-        console.log('WebSocket disconnected. Attempts:', reconnectAttemptsRef.current)
-        if (reconnectAttemptsRef.current > 0) {
-          console.log('WebSocket connection failed after retry')
-        }
       }
     } catch (error) {
-      console.error('Error creating WebSocket:', error)
       setIsConnecting(false)
       if (onError) {
         onError(error as Error)

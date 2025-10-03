@@ -107,7 +107,6 @@ export default function LocalUsersManagement() {
         resetForm()
       },
       onError: (error: any) => {
-        console.error('Error creating user:', error.response?.data)
         let errorMessage = 'Failed to create user'
 
         if (error.response?.data) {
@@ -170,7 +169,6 @@ export default function LocalUsersManagement() {
         alert('User deleted successfully')
       },
       onError: (error: any) => {
-        console.error('Delete user error:', error)
         const errorMessage = error.response?.data?.detail || error.message || 'Failed to delete user'
         alert(`Error deleting user: ${errorMessage}`)
       }

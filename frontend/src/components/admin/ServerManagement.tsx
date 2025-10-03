@@ -39,18 +39,6 @@ export default function ServerManagement() {
     return counts
   }, {})
 
-  // Debug logging
-  console.log('SERVERS PAGE - Total sessions:', allSessions.length)
-  console.log('SERVERS PAGE - Session counts by server:', sessionCounts)
-  console.log('SERVERS PAGE - Sample sessions:', allSessions.slice(0, 3))
-  console.log('SERVERS PAGE - Server list:', servers.map((s: any) => ({ id: s.id, name: s.name, type: s.type })))
-
-  // Additional debug for each server
-  servers.forEach((server: any) => {
-    const count = sessionCounts[server.id] || 0
-    console.log(`Server "${server.name}" (ID: ${server.id}, Type: ${server.type}): ${count} sessions`)
-  })
-
   const addServerMutation = useMutation(
     (serverData: any) => api.post('/admin/servers', serverData),
     {

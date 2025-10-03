@@ -18,16 +18,6 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`
   }
 
-  // Log termination requests
-  if (config.url?.includes('/terminate')) {
-    console.log('TERMINATION REQUEST:', {
-      url: config.url,
-      method: config.method,
-      baseURL: config.baseURL,
-      fullURL: `${config.baseURL}${config.url}`
-    })
-  }
-
   return config
 })
 

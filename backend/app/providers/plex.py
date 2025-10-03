@@ -219,7 +219,7 @@ class PlexProvider(BaseProvider):
                 logger.debug("No valid Plex token available")
                 return []
 
-            logger.debug(f"Fetching Plex sessions with token: {self.token[:10]}...{self.token[-10:] if len(self.token) > 20 else 'N/A'}")
+            logger.debug(f"Fetching Plex sessions (authenticated)")
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.base_url}/status/sessions",
@@ -369,7 +369,7 @@ class PlexProvider(BaseProvider):
                         if speed:
                             try:
                                 session_data["transcode_speed"] = float(speed)
-                            except:
+                            except (ValueError, TypeError):
                                 session_data["transcode_speed"] = None
 
                         # Get transcoded resolution if available from TranscodeSession
@@ -603,7 +603,7 @@ class PlexProvider(BaseProvider):
     async def _get_latest_version(self, client: httpx.AsyncClient) -> Optional[str]:
         """Get the latest Plex version from Docker Hub"""
         try:
-            print("Fetching Plex latest version from Docker Hub...")
+            logger.info("Fetching Plex latest version from Docker Hub...")
             response = await client.get(
                 "https://hub.docker.com/v2/repositories/plexinc/pms-docker/tags?page_size=20",
                 timeout=10.0
@@ -631,10 +631,10 @@ class PlexProvider(BaseProvider):
                 if versions:
                     # Sort by version numbers
                     versions.sort(key=lambda v: [int(x) for x in v.split('-')[0].split('.')], reverse=True)
-                    print(f"Found Plex versions: {versions[:3]}, returning: {versions[0]}")
+                    logger.info(f"Found Plex versions: {versions[:3]}, returning: {versions[0]}")
                     return versions[0]
                 else:
-                    print("No Plex versions found in tags")
+                    logger.debug("No Plex versions found in tags")
 
             return None
 
@@ -659,7 +659,7 @@ class PlexProvider(BaseProvider):
                     return False
 
             return False
-        except:
+        except (ValueError, IndexError, AttributeError):
             return False
 
     async def list_users(self) -> List[Dict[str, Any]]:
@@ -1090,7 +1090,7 @@ class PlexProvider(BaseProvider):
                             "title": section.get("title"),
                             "type": section.get("type")
                         })
-                except:
+                except (KeyError, ValueError, TypeError):
                     # Fall back to XML parsing if JSON fails
                     import xml.etree.ElementTree as ET
                     root = ET.fromstring(response.text)

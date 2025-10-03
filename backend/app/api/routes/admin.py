@@ -1,6 +1,7 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
+import logging
 
 from ...core.database import get_db
 from ...core.security import (
@@ -28,6 +29,7 @@ from datetime import datetime
 from typing import Dict, Any
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/servers", response_model=ServerResponse)
@@ -50,7 +52,7 @@ async def create_server(
             owner_id=current_user.id
         )
         # Create provider with credentials directly
-        print(f"Creating provider for {server_data.type} with credentials: {list(server_data.credentials.keys()) if server_data.credentials else 'None'}")
+        logger.debug(f"Creating provider for {server_data.type} with credentials: {list(server_data.credentials.keys()) if server_data.credentials else 'None'}")
         if server_data.type == ServerType.plex:
             from ...providers.plex import PlexProvider
             provider = PlexProvider(temp_server, server_data.credentials)
@@ -332,7 +334,7 @@ async def track_session_analytics(db: Session, server_id: int, session: dict):
         db.commit()
 
     except Exception as e:
-        print(f"Error tracking analytics for session: {e}")
+        logger.error(f"Error tracking analytics for session: {e}")
         db.rollback()
 
 
@@ -484,7 +486,7 @@ async def get_gpu_status(
                 gpu_status["total_sw_transcodes"] += server_sw_transcodes
 
         except Exception as e:
-            print(f"Failed to get GPU status from server {server.name}: {e}")
+            logger.error(f"Failed to get GPU status from server {server.name}: {e}")
             continue
 
     gpu_status["total_transcodes"] = gpu_status["total_hw_transcodes"] + gpu_status["total_sw_transcodes"]
@@ -540,7 +542,7 @@ async def terminate_session(
             )
 
     try:
-        print(f"Attempting to terminate session {session_id} on server {server_id} ({server.name})")
+        logger.info(f"Attempting to terminate session {session_id} on server {server_id} ({server.name})")
         provider = ProviderFactory.create_provider(server, db)
 
         # For media users, verify they're terminating their own session
@@ -569,7 +571,7 @@ async def terminate_session(
                 )
 
         success = await provider.terminate_session(session_id)
-        print(f"Termination result for session {session_id}: {success}")
+        logger.info(f"Termination result for session {session_id}: {success}")
 
         if not success:
             # Check if this is a Plex server for better error message
@@ -592,8 +594,8 @@ async def terminate_session(
                     username = session.get("UserName", session.get("username", "Unknown"))
                     session_info = username
                     break
-        except:
-            pass
+        except Exception:
+            pass  # Session info lookup failed, but termination can still proceed
 
         # Log the action
         AuditService.log_session_terminated(
@@ -697,25 +699,25 @@ async def get_session_counts(
     servers = server_service.get_servers_by_owner(current_user.id)
 
     session_counts = {}
-    print(f"[SESSION COUNTS] Processing {len(servers)} servers")
+    logger.debug(f"[SESSION COUNTS] Processing {len(servers)} servers")
 
     for server in servers:
         if not server.enabled:
             session_counts[server.id] = 0
-            print(f"[SESSION COUNTS] {server.name}: 0 (disabled)")
+            logger.debug(f"[SESSION COUNTS] {server.name}: 0 (disabled)")
             continue
 
         try:
             provider = ProviderFactory.create_provider(server, db)
             sessions = await provider.list_active_sessions()
             session_counts[server.id] = len(sessions)
-            print(f"[SESSION COUNTS] {server.name}: {len(sessions)} sessions")
+            logger.debug(f"[SESSION COUNTS] {server.name}: {len(sessions)} sessions")
         except Exception as e:
-            print(f"[SESSION COUNTS] ERROR - Failed to fetch session count from server {server.name}: {e}")
+            logger.error(f"[SESSION COUNTS] ERROR - Failed to fetch session count from server {server.name}: {e}")
             session_counts[server.id] = 0
 
     total_count = sum(session_counts.values())
-    print(f"[SESSION COUNTS] Total sessions across all servers: {total_count}")
+    logger.debug(f"[SESSION COUNTS] Total sessions across all servers: {total_count}")
     return session_counts
 
 
@@ -864,7 +866,6 @@ async def get_user_library_access(
 
     # Initialize provider and get user's library access
     try:
-        print(f"========== ADMIN ROUTE: Getting library access for user {user_id} on server {server.name} ==========")
         logger.info(f"========== ADMIN ROUTE: Getting library access for user {user_id} on server {server.name} (type: {server.type}) ==========")
 
         provider = ProviderFactory.create_provider(server, db)
@@ -872,22 +873,17 @@ async def get_user_library_access(
 
         # Check if the provider has the get_user_library_access method
         if hasattr(provider, 'get_user_library_access'):
-            print(f"Provider {provider.__class__.__name__} has get_user_library_access method")
             logger.info(f"Provider {provider.__class__.__name__} has get_user_library_access method")
             library_access = await provider.get_user_library_access(user_id)
-            print(f"Library access result: {library_access}")
             logger.info(f"Library access for user {user_id}: {library_access}")
             return library_access
         else:
             # Fallback for providers that don't have this method yet
-            print(f"Provider {provider.__class__.__name__} MISSING get_user_library_access method!")
             logger.warning(f"Provider {provider.__class__.__name__} doesn't have get_user_library_access method")
             return {"library_ids": [], "all_libraries": False}
     except Exception as e:
-        print(f"EXCEPTION in get_user_library_access route: {e}")
         logger.error(f"Failed to get library access for user {user_id} on server {server.name}: {e}")
         import traceback
-        print(f"Traceback: {traceback.format_exc()}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         return {"library_ids": [], "all_libraries": False}
 
@@ -1046,7 +1042,7 @@ async def get_analytics(
         return analytics_data
     except Exception as e:
         # If analytics fails, return empty data to prevent dashboard crash
-        print(f"Analytics query failed: {e}")
+        logger.error(f"Analytics query failed: {e}")
         return {
             "filters": filters,
             "top_users": [],

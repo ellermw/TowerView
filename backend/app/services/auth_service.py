@@ -136,6 +136,12 @@ class AuthService:
 
     async def create_initial_admin(self) -> User:
         """Create the initial admin user if it doesn't exist"""
+        import secrets
+        import string
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         existing_admin = self.db.query(User).filter(
             User.type == UserType.admin
         ).first()
@@ -143,10 +149,30 @@ class AuthService:
         if existing_admin:
             return existing_admin
 
+        # Generate secure random password if not set in environment
+        if settings.admin_password:
+            admin_password = settings.admin_password
+            logger.info(f"Creating initial admin user '{settings.admin_username}' with password from environment")
+        else:
+            # Generate a secure random password
+            alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+            admin_password = ''.join(secrets.choice(alphabet) for _ in range(16))
+            logger.warning(f"""
+╔════════════════════════════════════════════════════════════╗
+║                    INITIAL ADMIN CREDENTIALS                  ║
+╠════════════════════════════════════════════════════════════╣
+║ Username: {settings.admin_username:<48} ║
+║ Password: {admin_password:<48} ║
+╠════════════════════════════════════════════════════════════╣
+║ IMPORTANT: Save this password! It will not be shown again.  ║
+║ You will be required to change it on first login.           ║
+╚════════════════════════════════════════════════════════════╝
+            """)
+
         admin_user = User(
             type=UserType.admin,
             username=settings.admin_username,
-            password_hash=get_password_hash(settings.admin_password),
+            password_hash=get_password_hash(admin_password),
             must_change_password=True
         )
 

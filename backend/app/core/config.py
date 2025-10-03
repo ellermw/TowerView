@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     secret_key: str
     jwt_secret_key: Optional[str] = None
     admin_username: str = "admin"
-    admin_password: str = "admin"
+    admin_password: Optional[str] = None  # Will be generated on first run if not set
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 

@@ -7,9 +7,15 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 import os
 import sys
+import logging
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.config import settings
+
+# Configure logging for migration
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def migrate_user_roles():
     """Migrate existing local_user roles to staff"""
@@ -28,16 +34,16 @@ def migrate_user_roles():
             )
 
             rows_updated = result.rowcount
-            print(f"Migrated {rows_updated} users from 'local_user' to 'staff' role")
+            logger.info(f"Migrated {rows_updated} users from 'local_user' to 'staff' role")
 
             # Commit transaction
             trans.commit()
-            print("Migration completed successfully")
+            logger.info("Migration completed successfully")
 
         except Exception as e:
             # Rollback on error
             trans.rollback()
-            print(f"Migration failed: {e}")
+            logger.error(f"Migration failed: {e}")
             raise
 
 if __name__ == "__main__":

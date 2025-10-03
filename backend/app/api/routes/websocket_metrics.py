@@ -147,7 +147,7 @@ async def websocket_metrics(websocket: WebSocket):
                 # Send ping to check connection
                 try:
                     await websocket.send_text("ping")
-                except:
+                except (ConnectionError, RuntimeError):
                     break
 
     except WebSocketDisconnect:

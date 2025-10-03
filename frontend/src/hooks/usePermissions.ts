@@ -69,8 +69,7 @@ export function usePermissions() {
           }
 
           setPermissions(userPerms)
-        } catch (error) {
-          console.error('Error fetching permissions:', error)
+        } catch (_error) {
           // Set minimal permissions for dashboard access
           setPermissions({
             view_analytics: true,  // Always show dashboard

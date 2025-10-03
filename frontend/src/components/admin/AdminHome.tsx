@@ -209,24 +209,12 @@ export default function AdminHome() {
   // Get active sessions with 1-second refresh for live bandwidth updates
   const { data: sessions = [], isLoading: sessionsLoading, refetch: refetchSessions, error: sessionsError } = useQuery<LiveSession[]>(
     'admin-sessions',
-    () => api.get('/admin/sessions').then(res => {
-      // Debug logging for HDR
-      const togetherSession = res.data.find((s: any) => s.title?.includes('Together'));
-      if (togetherSession) {
-        console.log('Together session from API:', {
-          title: togetherSession.title,
-          is_hdr: togetherSession.is_hdr,
-          is_dolby_vision: togetherSession.is_dolby_vision,
-          quality_profile: togetherSession.quality_profile
-        });
-      }
-      return res.data;
-    }),
+    () => api.get('/admin/sessions').then(res => res.data),
     {
       refetchInterval: 2000, // 2-second refresh for live updates
       refetchOnWindowFocus: false,
-      onError: (error) => {
-        console.error('Failed to fetch sessions:', error)
+      onError: (_error) => {
+        // Error handling - silenced in production
       },
       retry: 1
     }
@@ -248,8 +236,8 @@ export default function AdminHome() {
     {
       refetchInterval: 5000, // Refresh every 5 seconds
       refetchOnWindowFocus: false,
-      onError: (error) => {
-        console.error('Failed to fetch analytics:', error)
+      onError: (_error) => {
+        // Error handling - silenced in production
       },
       retry: 1
     }
@@ -270,17 +258,14 @@ export default function AdminHome() {
   // Terminate session mutation
   const terminateSessionMutation = useMutation(
     ({ serverId, sessionId }: { serverId: number, sessionId: string }) => {
-      console.log(`Attempting to terminate session ${sessionId} on server ${serverId}`)
       return api.post(`/admin/servers/${serverId}/sessions/${sessionId}/terminate`)
     },
     {
       onSuccess: () => {
-        console.log('Session terminated successfully')
         toast.success('Session terminated successfully')
         refetchSessions()
       },
       onError: (error: any) => {
-        console.error('Termination error:', error)
         const errorMessage = error.response?.data?.detail || 'Failed to terminate session'
         toast.error(errorMessage)
       }
@@ -314,16 +299,6 @@ export default function AdminHome() {
 
           const serverKey = session.server_name || `Server ${session.server_id || 'Unknown'}`
           serverBandwidths[serverKey] = (serverBandwidths[serverKey] || 0) + bandwidth
-
-          // Debug logging for Jellyfin sessions
-          if (session.server_type === 'jellyfin' || (session.server_name && session.server_name.toLowerCase().includes('jellyfin'))) {
-            console.log('Jellyfin session in bandwidth tracking:', {
-              serverName: session.server_name,
-              serverType: session.server_type,
-              bandwidth: bandwidth,
-              serverKey: serverKey
-            })
-          }
         })
       }
 
@@ -372,11 +347,6 @@ export default function AdminHome() {
     Array.from(serverNames).forEach((server, index) => {
       // Never assign white (#FFFFFF) to servers - it's reserved for Total
       serverColorMap[server] = colors[index % colors.length]
-    })
-
-    console.log('Bandwidth chart server colors:', {
-      servers: Array.from(serverNames),
-      colorMap: serverColorMap
     })
 
     return serverColorMap

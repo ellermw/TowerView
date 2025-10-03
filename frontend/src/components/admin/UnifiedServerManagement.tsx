@@ -100,8 +100,8 @@ export default function UnifiedServerManagement() {
     () => api.get(`/admin/local-users/${user?.id}/permissions`).then(res => res.data),
     {
       enabled: (user?.type === 'local_user' || user?.type === 'staff' || user?.type === 'support') && !!user?.id,
-      onError: (error: any) => {
-        console.error('Failed to fetch user permissions:', error)
+      onError: (_error: any) => {
+        // Error handling - silenced in production
       }
     }
   )
@@ -115,7 +115,6 @@ export default function UnifiedServerManagement() {
 
   // Get all server IDs for WebSocket metrics
   const serverIds = servers.map(s => s.id)
-  console.log('UnifiedServerManagement - Server IDs:', serverIds)
 
   // Always use WebSocket mode (admin's choice)
   const getWebSocketEnabled = () => {
@@ -127,7 +126,6 @@ export default function UnifiedServerManagement() {
     serverIds,
     enabled: serverIds.length > 0  // Enable when we have servers
   })
-  console.log('UnifiedServerManagement - WebSocket connected:', isConnected, 'Metrics:', Object.keys(wsMetrics || {}))
 
   // Group servers by type
   const groupedServers = useMemo(() => {
@@ -169,8 +167,7 @@ export default function UnifiedServerManagement() {
             try {
               const res = await api.get(`/settings/portainer/container/${server.id}/info`)
               infoMap[server.id] = res.data
-            } catch (error: any) {
-              console.error(`Failed to fetch container info for server ${server.id}:`, error.response?.status, error.response?.data)
+            } catch (_error: any) {
               // If we get a 403, the user doesn't have permission, but we tried
               // Still try to show controls if we think they should have permission
               // Just set mapped: false on any error
@@ -293,23 +290,11 @@ export default function UnifiedServerManagement() {
         retry: 2,
         staleTime: 30000, // Consider data stale after 30 seconds
         cacheTime: 60000, // Keep in cache for 1 minute
-        onError: (error: any) => {
-          console.error(`Failed to fetch version for server ${server.id}:`, error)
+        onError: (_error: any) => {
+          // Error handling - silenced in production
         }
       }
     )
-
-    // Debug logging
-    console.log(`Server ${server.name} (ID: ${server.id}):`, {
-      containerInfo,
-      canManage: hasManagePermission,
-      isAdmin,
-      userType: user?.type,
-      userPermissions,
-      versionInfo,
-      versionError,
-      shouldShowControls: containerInfo.mapped && hasManagePermission
-    })
 
     return (
       <div className="card hover:shadow-xl transition-all duration-300 overflow-hidden">

@@ -7,9 +7,15 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 import os
 import sys
+import logging
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.config import settings
+
+# Configure logging for migration
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def add_new_role_types():
     """Add staff and support roles to usertype enum"""
@@ -33,27 +39,27 @@ def add_new_role_types():
                 conn.execute(
                     text("ALTER TYPE usertype ADD VALUE 'staff'")
                 )
-                print("Added 'staff' to usertype enum")
+                logger.info("Added 'staff' to usertype enum")
             else:
-                print("'staff' already exists in usertype enum")
+                logger.info("'staff' already exists in usertype enum")
 
             # Add 'support' if not exists
             if 'support' not in existing_values:
                 conn.execute(
                     text("ALTER TYPE usertype ADD VALUE 'support'")
                 )
-                print("Added 'support' to usertype enum")
+                logger.info("Added 'support' to usertype enum")
             else:
-                print("'support' already exists in usertype enum")
+                logger.info("'support' already exists in usertype enum")
 
             # Commit transaction
             trans.commit()
-            print("Enum update completed successfully")
+            logger.info("Enum update completed successfully")
 
         except Exception as e:
             # Rollback on error
             trans.rollback()
-            print(f"Migration failed: {e}")
+            logger.error(f"Migration failed: {e}")
             raise
 
 if __name__ == "__main__":
