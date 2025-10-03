@@ -8,6 +8,7 @@ from datetime import datetime
 
 from ...core.database import get_db
 from ...core.security import verify_token, get_current_user
+from ...core.rate_limiter import auth_limiter
 from ...schemas.auth import LoginRequest, TokenResponse, RefreshTokenRequest, ChangePasswordRequest
 from ...services.auth_service import AuthService
 from ...services.audit_service import AuditService
@@ -486,52 +487,88 @@ async def login(
     """Login with either admin credentials or media user credentials"""
     import logging
     logger = logging.getLogger(__name__)
+
+    # Extract username for rate limiting
+    username = None
+    if login_data.admin_login:
+        username = login_data.admin_login.username
+    elif login_data.local_login:
+        username = login_data.local_login.username
+    elif login_data.media_login:
+        username = login_data.media_login.username
+
+    # Check rate limit before processing
+    auth_limiter.check_rate_limit(request, username)
+
     logger.info(f"Login request received: admin={bool(login_data.admin_login)}, media={bool(login_data.media_login)}, local={bool(login_data.local_login)}")
     if login_data.admin_login:
         logger.info(f"Admin login attempt: {login_data.admin_login.username}")
     if login_data.local_login:
         logger.info(f"Local login attempt: {login_data.local_login.username}")
+
     auth_service = AuthService(db)
 
-    if login_data.admin_login:
-        user = await auth_service.authenticate_admin(login_data.admin_login)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials"
+    user = None
+    try:
+        if login_data.admin_login:
+            user = await auth_service.authenticate_admin(login_data.admin_login)
+            if not user:
+                # Record failed attempt
+                auth_limiter.record_attempt(request, username)
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid credentials"
+                )
+
+        elif login_data.media_login:
+            user = await auth_service.authenticate_media_user(login_data.media_login)
+            if not user:
+                # Record failed attempt
+                auth_limiter.record_attempt(request, username)
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid media user credentials"
+                )
+
+        elif login_data.local_login:
+            # Local user login
+            from ...models.user import UserType
+            user = auth_service.authenticate_local_user(
+                login_data.local_login.username,
+                login_data.local_login.password
             )
 
-    elif login_data.media_login:
-        user = await auth_service.authenticate_media_user(login_data.media_login)
-        if not user:
+            if not user:
+                # Record failed attempt
+                auth_limiter.record_attempt(request, username)
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid local user credentials"
+                )
+        else:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid media user credentials"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Must provide either admin_login, media_login, or local_login"
             )
 
-    elif login_data.local_login:
-        # Local user login
-        from ...models.user import UserType
-        user = auth_service.authenticate_local_user(
-            login_data.local_login.username,
-            login_data.local_login.password
-        )
+        # Reset rate limit on successful login
+        auth_limiter.reset_client(request, username)
 
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid local user credentials"
-            )
-    else:
+        # Log successful login
+        AuditService.log_login(db, user, request)
+
+        return auth_service.create_tokens(user)
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Log unexpected errors
+        logger.error(f"Login error: {e}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Must provide either admin_login, media_login, or local_login"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Login failed due to an internal error"
         )
-
-    # Log successful login
-    AuditService.log_login(db, user, request)
-
-    return auth_service.create_tokens(user)
 
 
 @router.post("/refresh", response_model=TokenResponse)
