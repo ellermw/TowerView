@@ -51,19 +51,9 @@ async def create_server(
             base_url=server_data.base_url,
             owner_id=current_user.id
         )
-        # Create provider with credentials directly
+        # Create provider using factory
         logger.debug(f"Creating provider for {server_data.type} with credentials: {list(server_data.credentials.keys()) if server_data.credentials else 'None'}")
-        if server_data.type == ServerType.plex:
-            from ...providers.plex import PlexProvider
-            provider = PlexProvider(temp_server, server_data.credentials)
-        elif server_data.type == ServerType.emby:
-            from ...providers.emby import EmbyProvider
-            provider = EmbyProvider(temp_server, server_data.credentials)
-        elif server_data.type == ServerType.jellyfin:
-            from ...providers.jellyfin import JellyfinProvider
-            provider = JellyfinProvider(temp_server, server_data.credentials)
-        else:
-            raise ValueError(f"Unsupported server type: {server_data.type}")
+        provider = ProviderFactory.create_provider(temp_server, credentials=server_data.credentials)
 
         if not await provider.connect():
             raise HTTPException(
@@ -198,18 +188,8 @@ async def update_server(
                 owner_id=current_user.id
             )
 
-            # Create provider with new credentials
-            if temp_server.type == ServerType.plex:
-                from ...providers.plex import PlexProvider
-                provider = PlexProvider(temp_server, server_data.credentials)
-            elif temp_server.type == ServerType.emby:
-                from ...providers.emby import EmbyProvider
-                provider = EmbyProvider(temp_server, server_data.credentials)
-            elif temp_server.type == ServerType.jellyfin:
-                from ...providers.jellyfin import JellyfinProvider
-                provider = JellyfinProvider(temp_server, server_data.credentials)
-            else:
-                raise ValueError(f"Unsupported server type: {temp_server.type}")
+            # Create provider with new credentials using factory
+            provider = ProviderFactory.create_provider(temp_server, credentials=server_data.credentials)
 
             if not await provider.connect():
                 raise HTTPException(

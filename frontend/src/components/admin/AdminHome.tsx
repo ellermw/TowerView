@@ -290,12 +290,6 @@ export default function AdminHome() {
 
       const currentSessions = sessionsRef.current
       if (currentSessions && Array.isArray(currentSessions) && currentSessions.length > 0) {
-        // Debug: Log first session to see structure
-        if (currentSessions.length > 0 && !window._debugLogged) {
-          console.log('Session structure:', currentSessions[0])
-          window._debugLogged = true
-        }
-
         currentSessions.forEach(session => {
           const bandwidth = session.session_bandwidth ?
             (typeof session.session_bandwidth === 'string' ?
@@ -731,7 +725,7 @@ export default function AdminHome() {
               {/* Time interval markers */}
               {bandwidthHistory.map((point, index) => {
                 if (index % 4 === 0 || index === bandwidthHistory.length - 1) { // Show every 4th marker (1 minute intervals)
-                  const x = (index / (bandwidthHistory.length - 1)) * 100
+                  const x = bandwidthHistory.length === 1 ? 50 : (index / (bandwidthHistory.length - 1)) * 100
                   return (
                     <line
                       key={index}
@@ -758,10 +752,12 @@ export default function AdminHome() {
                   vectorEffect="non-scaling-stroke"
                   opacity="0.7"
                   points={bandwidthHistory.map((point, index) => {
-                    const x = (index / (bandwidthHistory.length - 1)) * 100
+                    // Handle single point case
+                    const x = bandwidthHistory.length === 1 ? 50 : (index / (bandwidthHistory.length - 1)) * 100
                     const bandwidth = point.serverBandwidths[serverName] || 0
                     // Scale bandwidth relative to the adjusted min-max range
-                    const y = 95 - ((bandwidth - adjustedMinBandwidth) / (adjustedMaxBandwidth - adjustedMinBandwidth)) * 85
+                    const range = adjustedMaxBandwidth - adjustedMinBandwidth
+                    const y = range > 0 ? 95 - ((bandwidth - adjustedMinBandwidth) / range) * 85 : 50
                     return `${x},${y}`
                   }).join(' ')}
                 />
@@ -784,7 +780,7 @@ export default function AdminHome() {
           <div className="absolute inset-x-2 flex justify-between text-xs text-slate-500 dark:text-slate-400">
             {bandwidthHistory.map((point, index) => {
               if (index % 4 === 0 || index === bandwidthHistory.length - 1) { // Show every 4th label
-                const position = (index / (bandwidthHistory.length - 1)) * 100
+                const position = bandwidthHistory.length === 1 ? 50 : (index / (bandwidthHistory.length - 1)) * 100
                 return (
                   <span
                     key={index}
