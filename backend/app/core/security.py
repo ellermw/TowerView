@@ -9,7 +9,13 @@ from .config import settings
 from .database import get_db
 from ..models.user import User, UserType
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use explicit bcrypt configuration for stability across container rebuilds
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__ident="2b",  # Force $2b$ prefix for consistency
+    bcrypt__rounds=12     # Explicit rounds for stability
+)
 security = HTTPBearer()
 
 

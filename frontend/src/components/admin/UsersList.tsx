@@ -135,33 +135,48 @@ export default function UsersList() {
   }
 
   const openLibraryModal = async (user: ServerUser) => {
+    console.log('=== openLibraryModal called ===')
+    console.log('User:', user)
     setSelectedUser(user)
     setIsLibraryModalOpen(true)
 
     // Only load libraries for Emby/Jellyfin
     if (user.server_type?.toLowerCase() !== 'plex' && user.server_id) {
+      console.log('Loading libraries for non-Plex server...')
       setLibrariesLoading(true)
       try {
         // Fetch available libraries
+        console.log('Fetching available libraries from:', `/admin/servers/${user.server_id}/libraries`)
         const response = await api.get(`/admin/servers/${user.server_id}/libraries`)
+        console.log('Available libraries:', response.data)
         setLibraries(response.data)
 
         // Fetch user's current library access
         console.log('Fetching library access for user:', user.user_id, 'on server:', user.server_id)
         const accessResponse = await api.get(`/admin/servers/${user.server_id}/users/${user.user_id}/libraries`)
         console.log('Library access response:', accessResponse.data)
+
         if (accessResponse.data) {
           const accessData = accessResponse.data
+          console.log('Access data:', accessData)
+          console.log('all_libraries:', accessData.all_libraries)
+          console.log('library_ids:', accessData.library_ids)
+
           // Pre-select the libraries the user already has access to
           if (accessData.all_libraries && response.data) {
             // If user has access to all libraries, select all
-            console.log('User has access to all libraries')
-            setSelectedLibraries(response.data.map((lib: Library) => lib.id))
+            console.log('User has access to all libraries, selecting all')
+            const allIds = response.data.map((lib: Library) => lib.id)
+            console.log('Setting selected libraries to:', allIds)
+            setSelectedLibraries(allIds)
           } else {
             // Otherwise, select only the enabled libraries
             console.log('User has access to specific libraries:', accessData.library_ids)
+            console.log('Setting selected libraries to:', accessData.library_ids || [])
             setSelectedLibraries(accessData.library_ids || [])
           }
+        } else {
+          console.log('No access data received')
         }
       } catch (error) {
         console.error('Failed to load libraries:', error)
@@ -171,6 +186,7 @@ export default function UsersList() {
       }
     } else {
       // For Plex or if no server_id, clear the selection
+      console.log('Plex server or no server_id, clearing selection')
       setSelectedLibraries([])
     }
   }

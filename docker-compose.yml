@@ -11,6 +11,11 @@ services:
       - db-data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
     image: redis:7
@@ -18,6 +23,11 @@ services:
       - redis-data:/data
     ports:
       - "6380:6379"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   backend:
     build: ./backend
@@ -35,6 +45,11 @@ services:
     volumes:
       - ./backend:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   worker:
     build: ./worker
@@ -48,6 +63,11 @@ services:
     volumes:
       - ./worker:/app
       - ./backend:/backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   worker-beat:
     build: ./worker
@@ -62,6 +82,11 @@ services:
       - ./worker:/app
       - ./backend:/backend
     command: celery -A worker.celery_app beat --loglevel=info
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend:
     build: ./frontend
@@ -72,6 +97,11 @@ services:
       - /app/node_modules
     environment:
       - VITE_API_URL=
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   nginx:
     image: nginx:alpine
@@ -84,6 +114,11 @@ services:
       - backend
       - frontend
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   db-data:

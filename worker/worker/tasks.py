@@ -9,9 +9,12 @@ from .celery_app import celery_app
 from .database import get_db
 
 # Import shared models from local simplified version
-from .models import Server, ServerType, ProviderType, Session as MediaSession, Media, User, Credential
+from .models import Server, ServerType, ProviderType, UserType, Session as MediaSession, Media, User, Credential
 
 logger = logging.getLogger(__name__)
+
+# Import settings model
+from .models import SystemSettings
 
 def create_provider(server: Server, db: Session):
     """Create a provider instance for the given server without circular imports"""
@@ -309,5 +312,168 @@ def test_connection(server_id: int):
     except Exception as e:
         logger.error(f"Error testing connection to server {server_id}: {str(e)}")
         return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task(bind=True)
+def sync_users_task(self):
+    """Sync users from all enabled servers"""
+    logger.info("Starting user sync task")
+
+    db = get_db()
+    try:
+        # Get all enabled servers
+        servers = db.query(Server).filter(Server.enabled == True).all()
+        logger.info(f"Found {len(servers)} enabled servers for user sync")
+
+        total_users_synced = 0
+
+        for server in servers:
+            try:
+                provider = create_provider(server, db)
+
+                # Test connection first
+                if not asyncio.run(provider.connect()):
+                    logger.warning(f"Cannot connect to server {server.name} - skipping user sync")
+                    continue
+
+                # Get users from provider
+                users = asyncio.run(provider.list_users())
+                logger.info(f"Found {len(users)} users on server {server.name}")
+
+                # Update users in database
+                for user_data in users:
+                    # Check if user exists
+                    existing_user = db.query(User).filter(
+                        User.server_id == server.id,
+                        User.provider_user_id == user_data.get('id')
+                    ).first()
+
+                    if existing_user:
+                        # Update existing user
+                        existing_user.username = user_data.get('username', existing_user.username)
+                        existing_user.email = user_data.get('email', existing_user.email)
+                        existing_user.is_admin = user_data.get('is_admin', False)
+                        existing_user.updated_at = datetime.utcnow()
+                    else:
+                        # Create new user
+                        # Convert ServerType to ProviderType
+                        provider_type = ProviderType[server.type.name]
+                        new_user = User(
+                            server_id=server.id,
+                            provider_user_id=user_data.get('id'),
+                            username=user_data.get('username'),
+                            email=user_data.get('email'),
+                            is_admin=user_data.get('is_admin', False),
+                            provider=provider_type,
+                            type=UserType.media_user,
+                            created_at=datetime.utcnow()
+                        )
+                        db.add(new_user)
+
+                    total_users_synced += 1
+
+                db.commit()
+
+            except Exception as e:
+                logger.error(f"Error syncing users from server {server.id} ({server.name}): {str(e)}")
+                db.rollback()
+
+        # Update last sync time
+        setting = db.query(SystemSettings).filter_by(key="user_sync_last_run").first()
+        if not setting:
+            setting = SystemSettings(
+                key="user_sync_last_run",
+                value=datetime.utcnow().isoformat(),
+                category="sync",
+                description="Last user sync run time"
+            )
+            db.add(setting)
+        else:
+            setting.value = datetime.utcnow().isoformat()
+
+        db.commit()
+
+        logger.info(f"Completed user sync task. Synced {total_users_synced} users")
+        return {"status": "completed", "users_synced": total_users_synced}
+
+    except Exception as e:
+        logger.error(f"Error in sync_users_task: {str(e)}")
+        raise self.retry(countdown=300, max_retries=3)
+    finally:
+        db.close()
+
+
+@celery_app.task(bind=True)
+def sync_libraries_task(self):
+    """Sync libraries from all enabled servers"""
+    logger.info("Starting library sync task")
+
+    db = get_db()
+    try:
+        # Get all enabled servers
+        servers = db.query(Server).filter(Server.enabled == True).all()
+        logger.info(f"Found {len(servers)} enabled servers for library sync")
+
+        total_libraries_synced = 0
+
+        for server in servers:
+            try:
+                provider = create_provider(server, db)
+
+                # Test connection first
+                if not asyncio.run(provider.connect()):
+                    logger.warning(f"Cannot connect to server {server.name} - skipping library sync")
+                    continue
+
+                # Get libraries from provider
+                libraries = asyncio.run(provider.list_libraries())
+                logger.info(f"Found {len(libraries)} libraries on server {server.name}")
+
+                # Store libraries in system settings as JSON
+                library_setting_key = f"server_{server.id}_libraries"
+                library_setting = db.query(SystemSettings).filter_by(key=library_setting_key).first()
+
+                if not library_setting:
+                    library_setting = SystemSettings(
+                        key=library_setting_key,
+                        value=libraries,  # Store as JSON
+                        category="libraries",
+                        description=f"Libraries for server {server.name}"
+                    )
+                    db.add(library_setting)
+                else:
+                    library_setting.value = libraries
+                    library_setting.updated_at = datetime.utcnow()
+
+                total_libraries_synced += len(libraries)
+                db.commit()
+
+            except Exception as e:
+                logger.error(f"Error syncing libraries from server {server.id} ({server.name}): {str(e)}")
+                db.rollback()
+
+        # Update last sync time
+        setting = db.query(SystemSettings).filter_by(key="library_sync_last_run").first()
+        if not setting:
+            setting = SystemSettings(
+                key="library_sync_last_run",
+                value=datetime.utcnow().isoformat(),
+                category="sync",
+                description="Last library sync run time"
+            )
+            db.add(setting)
+        else:
+            setting.value = datetime.utcnow().isoformat()
+
+        db.commit()
+
+        logger.info(f"Completed library sync task. Synced {total_libraries_synced} libraries")
+        return {"status": "completed", "libraries_synced": total_libraries_synced}
+
+    except Exception as e:
+        logger.error(f"Error in sync_libraries_task: {str(e)}")
+        raise self.retry(countdown=300, max_retries=3)
     finally:
         db.close()

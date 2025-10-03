@@ -765,6 +765,231 @@ async def refresh_users_cache(
     }
 
 
+@router.get("/servers/{server_id}/libraries")
+async def get_server_libraries(
+    server_id: int,
+    current_user: User = Depends(get_current_admin_or_local_user),
+    db: Session = Depends(get_db)
+):
+    """Get libraries for a specific server"""
+    # Get server
+    server = db.query(Server).filter(Server.id == server_id).first()
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    # Check permissions
+    if current_user.type != UserType.admin:
+        # Check if user has permission to manage this server
+        permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.server_id == server_id
+        ).first()
+
+        if not permission or not permission.can_manage_servers:
+            raise HTTPException(status_code=403, detail="No permission to manage this server")
+
+    # First try to get libraries from synced data in system_settings
+    from ...models.settings import SystemSettings
+    import json
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.info(f"Fetching libraries for server {server.name}")
+
+    # Try to get libraries from system_settings (synced data)
+    library_setting = db.query(SystemSettings).filter(
+        SystemSettings.key == f"server_{server_id}_libraries"
+    ).first()
+
+    libraries = []
+
+    if library_setting and library_setting.value:
+        # Use synced library data
+        synced_libraries = library_setting.value if isinstance(library_setting.value, list) else json.loads(library_setting.value)
+        for lib in synced_libraries:
+            libraries.append({
+                "id": str(lib.get("id", "")),
+                "name": lib.get("title", lib.get("name", "Unknown"))
+            })
+        logger.info(f"Found {len(libraries)} libraries from synced data for server {server.name}")
+    else:
+        # Fallback to playback events if no synced data
+        from ...models.playback_analytics import PlaybackEvent
+        logger.info(f"No synced libraries found, falling back to playback events for server {server.name}")
+
+        library_sections = db.query(PlaybackEvent.library_section).filter(
+            PlaybackEvent.server_id == server_id,
+            PlaybackEvent.library_section.isnot(None),
+            PlaybackEvent.library_section != ""
+        ).distinct().all()
+
+        for section in library_sections:
+            if section[0]:  # Make sure it's not None or empty
+                # Generate a simple ID based on the library name
+                library_id = section[0].lower().replace(" ", "_").replace("-", "_")
+                libraries.append({
+                    "id": library_id,
+                    "name": section[0]
+                })
+
+    # Sort libraries alphabetically by name
+    libraries.sort(key=lambda x: x["name"])
+
+    logger.info(f"Returning {len(libraries)} libraries for server {server.name}")
+    return libraries
+
+
+@router.get("/servers/{server_id}/users/{user_id}/libraries")
+async def get_user_library_access(
+    server_id: int,
+    user_id: str,  # Provider user ID
+    current_user: User = Depends(get_current_admin_or_local_user),
+    db: Session = Depends(get_db)
+):
+    """Get current library access for a user"""
+    # Get server
+    server = db.query(Server).filter(Server.id == server_id).first()
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    # Check permissions
+    if current_user.type != UserType.admin:
+        permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.server_id == server_id
+        ).first()
+
+        if not permission or not permission.can_manage_servers:
+            raise HTTPException(status_code=403, detail="No permission to manage this server")
+
+    # Initialize provider and get user's library access
+    try:
+        print(f"========== ADMIN ROUTE: Getting library access for user {user_id} on server {server.name} ==========")
+        logger.info(f"========== ADMIN ROUTE: Getting library access for user {user_id} on server {server.name} (type: {server.type}) ==========")
+
+        provider = ProviderFactory.create_provider(server, db)
+        await provider.initialize()
+
+        # Check if the provider has the get_user_library_access method
+        if hasattr(provider, 'get_user_library_access'):
+            print(f"Provider {provider.__class__.__name__} has get_user_library_access method")
+            logger.info(f"Provider {provider.__class__.__name__} has get_user_library_access method")
+            library_access = await provider.get_user_library_access(user_id)
+            print(f"Library access result: {library_access}")
+            logger.info(f"Library access for user {user_id}: {library_access}")
+            return library_access
+        else:
+            # Fallback for providers that don't have this method yet
+            print(f"Provider {provider.__class__.__name__} MISSING get_user_library_access method!")
+            logger.warning(f"Provider {provider.__class__.__name__} doesn't have get_user_library_access method")
+            return {"library_ids": [], "all_libraries": False}
+    except Exception as e:
+        print(f"EXCEPTION in get_user_library_access route: {e}")
+        logger.error(f"Failed to get library access for user {user_id} on server {server.name}: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return {"library_ids": [], "all_libraries": False}
+
+
+@router.post("/servers/{server_id}/users/{user_id}/libraries")
+async def set_user_library_access(
+    server_id: int,
+    user_id: str,  # Provider user ID
+    library_ids: List[str],
+    current_user: User = Depends(get_current_admin_or_local_user),
+    db: Session = Depends(get_db)
+):
+    """Set library access for a user"""
+    # Get server
+    server = db.query(Server).filter(Server.id == server_id).first()
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    # Check permissions
+    if current_user.type != UserType.admin:
+        permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.server_id == server_id
+        ).first()
+
+        if not permission or not permission.can_manage_servers:
+            raise HTTPException(status_code=403, detail="No permission to manage this server")
+
+    # Get provider and set library access
+    from ...providers.provider_factory import ProviderFactory
+    provider = ProviderFactory.create_provider(server, db)
+
+    success = await provider.set_library_access(user_id, library_ids)
+
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to set library access")
+
+    # Log the action
+    from ...services.audit_service import AuditService
+    AuditService.log_custom(
+        db, current_user, "set_library_access",
+        details=f"Set library access for user {user_id} on server {server.name}",
+        request=None
+    )
+
+    return {"success": True, "message": "Library access updated"}
+
+
+@router.post("/servers/{server_id}/users/{user_id}/password")
+async def change_user_password(
+    server_id: int,
+    user_id: str,  # Provider user ID
+    password_data: Dict[str, str],
+    current_user: User = Depends(get_current_admin_or_local_user),
+    db: Session = Depends(get_db)
+):
+    """Change password for a media server user (Emby/Jellyfin only)"""
+    # Get server
+    server = db.query(Server).filter(Server.id == server_id).first()
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    # Check if server supports password changes
+    if server.type == ServerType.plex:
+        raise HTTPException(status_code=400, detail="Password changes not supported for Plex servers")
+
+    # Check permissions
+    if current_user.type != UserType.admin:
+        permission = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.server_id == server_id
+        ).first()
+
+        if not permission or not permission.can_manage_servers:
+            raise HTTPException(status_code=403, detail="No permission to manage this server")
+
+    # Get password from request
+    new_password = password_data.get("new_password")
+    if not new_password:
+        raise HTTPException(status_code=400, detail="New password is required")
+
+    # Get provider and change password
+    from ...providers.provider_factory import ProviderFactory
+    provider = ProviderFactory.create_provider(server, db)
+
+    # Admin changing another user's password (no current password needed)
+    success = await provider.change_user_password(user_id, new_password)
+
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to change password")
+
+    # Log the action
+    from ...services.audit_service import AuditService
+    AuditService.log_custom(
+        db, current_user, "change_user_password",
+        details=f"Changed password for user {user_id} on server {server.name}",
+        request=None
+    )
+
+    return {"success": True, "message": "Password changed successfully"}
+
+
 @router.get("/bandwidth")
 async def get_bandwidth_history(
     current_user: User = Depends(get_current_admin_or_local_user),

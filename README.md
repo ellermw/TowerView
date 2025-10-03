@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-**Version 2.3.4 - Library Management Fix**
+**Version 2.3.5 - Docker Optimization & Password Stability**
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -67,6 +67,7 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 - Case-insensitive usernames for better UX
 - Role promotion/demotion controls
 - Self-protection (cannot delete/demote own account)
+- **Automatic password hash migration** - prevents login issues after Docker updates
 
 ### Authentication Methods
 
@@ -416,7 +417,24 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.4 (Current)
+### Version 2.3.5 (Current)
+- **Docker Optimization**:
+  - Added automatic Docker log rotation (10MB max per file, 3 files retained)
+  - Configured system-wide log limits in `/etc/docker/daemon.json`
+  - Prevents disk space issues from runaway container logs
+  - All docker-compose files updated with logging configuration
+- **Password Hash Stability**:
+  - Implemented stable bcrypt configuration to prevent hash incompatibility after rebuilds
+  - Added automatic password migration script that runs on startup
+  - Detects and fixes incompatible password hashes transparently
+  - Prevents "incorrect credentials" errors after Docker updates
+  - Created `backend/app/core/password_migration.py` for hash validation
+  - Added comprehensive logging for password migrations
+- **Documentation**:
+  - Added `CLAUDE.md` with detailed architecture and development guidelines
+  - Updated security documentation with password stability information
+
+### Version 2.3.4
 - **Bug Fixes**:
   - Fixed library access management for Emby/Jellyfin users - libraries now properly pre-check based on current user access
   - Resolved race condition in library modal that was clearing selections before API data loaded

@@ -64,6 +64,7 @@ class User(Base):
     email = Column(String, nullable=True)
     password_hash = Column(String, nullable=True)
     must_change_password = Column(Boolean, default=False)
+    is_admin = Column(Boolean, default=False, nullable=False)
     last_login_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, onupdate=func.now())
@@ -119,3 +120,14 @@ class Credential(Base):
     updated_at = Column(DateTime, onupdate=func.now())
 
     server = relationship("Server", back_populates="credentials")
+
+class SystemSettings(Base):
+    __tablename__ = "system_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, unique=True, nullable=False, index=True)
+    value = Column(JSON, nullable=True)
+    category = Column(String, nullable=True)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, onupdate=func.now())

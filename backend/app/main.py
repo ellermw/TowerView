@@ -33,8 +33,15 @@ async def lifespan(app: FastAPI):
     """Manage application lifecycle"""
     # Initialize on startup
     db = next(get_db())
+
+    # Create initial admin if needed
     auth_service = AuthService(db)
     await auth_service.create_initial_admin()
+
+    # Check and migrate incompatible password hashes (prevents login failures after rebuilds)
+    from .core.password_migration import startup_password_check
+    startup_password_check(db)
+
     db.close()
 
     # Start background metrics collection

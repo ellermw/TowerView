@@ -13,9 +13,11 @@ import {
   CpuChipIcon,
   ExclamationTriangleIcon,
   CubeIcon,
-  WifiIcon
+  WifiIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline'
 import api from '../../services/api'
+import SyncSettings from './SyncSettings'
 
 interface DockerContainer {
   id: string
@@ -231,6 +233,17 @@ export default function Settings() {
         >
           <CubeIcon className="h-5 w-5" />
           <span>Portainer</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('sync')}
+          className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+            activeTab === 'sync'
+              ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <ClockIcon className="h-5 w-5" />
+          <span>Sync & Cache</span>
         </button>
       </div>
 
@@ -600,6 +613,9 @@ export default function Settings() {
           </div>
         </div>
       )}
+
+      {/* Sync & Cache Tab Content */}
+      {activeTab === 'sync' && <SyncSettings />}
     </div>
   )
 }

@@ -1058,30 +1058,70 @@ class PlexProvider(BaseProvider):
     async def list_libraries(self) -> List[Dict[str, Any]]:
         """Get Plex libraries"""
         try:
-            async with httpx.AsyncClient() as client:
+            # Ensure we have a token for Plex
+            if not self.token:
+                # Try to get token from Plex.tv
+                if self.username and self.password:
+                    await self._get_plex_tv_token()
+
+                if not self.token:
+                    logger.warning(f"No token available for Plex server {self.server.name}")
+                    return []
+
+            async with httpx.AsyncClient(verify=False) as client:
                 response = await client.get(
                     f"{self.base_url}/library/sections",
-                    headers={"X-Plex-Token": self.token},
+                    headers={"X-Plex-Token": self.token, "Accept": "application/json"},
                     timeout=10.0
                 )
 
                 if response.status_code != 200:
+                    logger.warning(f"Failed to get Plex libraries: {response.status_code}")
                     return []
 
-                data = response.json()
                 libraries = []
 
-                for section in data.get("MediaContainer", {}).get("Directory", []):
-                    libraries.append({
-                        "id": section.get("key"),
-                        "title": section.get("title"),
-                        "type": section.get("type")
-                    })
+                # Try to parse as JSON first (if Accept header worked)
+                try:
+                    data = response.json()
+                    for section in data.get("MediaContainer", {}).get("Directory", []):
+                        libraries.append({
+                            "id": section.get("key"),
+                            "title": section.get("title"),
+                            "type": section.get("type")
+                        })
+                except:
+                    # Fall back to XML parsing if JSON fails
+                    import xml.etree.ElementTree as ET
+                    root = ET.fromstring(response.text)
+                    for directory in root.findall('.//Directory'):
+                        libraries.append({
+                            "id": directory.get("key"),
+                            "title": directory.get("title"),
+                            "type": directory.get("type")
+                        })
 
+                logger.info(f"Found {len(libraries)} Plex libraries")
                 return libraries
 
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error fetching Plex libraries: {str(e)}")
             return []
+
+    async def get_user_library_access(self, provider_user_id: str) -> Dict[str, Any]:
+        """Get user's current library access"""
+        # Plex uses a different library access model (shared servers/libraries)
+        # For now, return all libraries as accessible for Plex users
+        try:
+            libraries = await self.list_libraries()
+            library_ids = [lib.get("id") for lib in libraries]
+            return {
+                "library_ids": library_ids,
+                "all_libraries": True
+            }
+        except Exception as e:
+            logger.error(f"Failed to get Plex user library access: {e}")
+            return {"library_ids": [], "all_libraries": False}
 
     async def set_library_access(self, provider_user_id: str, library_ids: List[str]) -> bool:
         """Set library access for Plex user"""

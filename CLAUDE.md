@@ -1,0 +1,354 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+TowerView is a unified media server management platform that provides a single administrative interface for managing multiple media servers (Plex, Jellyfin, Emby). It includes real-time monitoring, user management, session control, analytics, and Docker container management via Portainer integration.
+
+**Current Version:** 2.3.4
+
+## Architecture
+
+### Multi-Container Options
+
+TowerView supports two deployment modes:
+
+1. **Production (2 containers)**: All-in-one container + PostgreSQL - recommended for production
+2. **Development (7 containers)**: Microservices architecture with separate containers for each service
+
+### Core Components
+
+- **Backend**: FastAPI application with JWT authentication
+- **Frontend**: React + TypeScript + Vite + TailwindCSS
+- **Worker**: Celery workers for background tasks (server polling, analytics)
+- **Beat Scheduler**: Celery Beat for periodic tasks
+- **Database**: PostgreSQL for persistent storage
+- **Cache**: Redis for caching and task queue
+- **Proxy**: Nginx for routing and static file serving
+
+## Development Commands
+
+### Full Development Stack (7 containers)
+
+```bash
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f backend
+docker-compose logs -f frontend
+docker-compose logs -f worker
+
+# Rebuild after changes
+docker-compose build
+docker-compose up -d
+
+# Stop services
+docker-compose down
+```
+
+### Backend Development
+
+```bash
+# Install dependencies
+cd backend
+pip install -r requirements.txt
+
+# Run backend directly (ensure DB and Redis are running)
+cd backend
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Database migrations (Alembic)
+cd backend
+alembic revision --autogenerate -m "Description"
+alembic upgrade head
+```
+
+### Frontend Development
+
+```bash
+# Install dependencies
+cd frontend
+npm install
+
+# Run dev server
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+
+# Type checking
+npx tsc --noEmit
+```
+
+### Worker Development
+
+```bash
+# Run Celery worker
+cd worker
+celery -A worker.celery_app worker --loglevel=info
+
+# Run Celery Beat scheduler
+cd worker
+celery -A worker.celery_app beat --loglevel=info
+```
+
+## Key Architectural Patterns
+
+### Provider Pattern
+
+Media server integrations follow a provider pattern with a common base interface:
+
+- **Base**: `backend/app/providers/base.py` - Abstract base class defining provider interface
+- **Implementations**: `plex.py`, `emby.py`, `jellyfin.py` - Server-specific implementations
+- **Factory**: `backend/app/providers/factory.py` - Creates appropriate provider instances
+
+Each provider implements:
+- `get_sessions()` - Fetch active streaming sessions
+- `get_users()` - Fetch media server users
+- `terminate_session()` - Stop a streaming session
+- `authenticate()` - Verify user credentials
+
+### Caching Architecture
+
+Multiple cache layers for performance:
+
+1. **Sessions Cache** (`sessions_cache_service.py`): Updates every 2s, cached for 5s
+2. **Users Cache** (`users_cache_service.py`): Updates every 60s, cached for 2min
+3. **Metrics Cache** (`metrics_cache_service.py`): Background collection for instant dashboard loads
+4. **Bandwidth Cache** (`bandwidth_cache.py`): Real-time bandwidth tracking with historical storage
+
+All cache services start on application startup via the FastAPI `lifespan` context manager in `backend/app/main.py`.
+
+### Authentication & Authorization
+
+- **JWT-based authentication** with access and refresh tokens
+- **Hierarchical roles**: Admin > Staff > Support
+- **Dual authentication modes**:
+  - Staff authentication for TowerView users
+  - Media user authentication (Plex OAuth, Emby/Jellyfin direct)
+- **Permission system**: Granular per-server permissions for Staff users stored in `UserPermission` model
+
+### Background Tasks
+
+Celery workers handle:
+- **Server polling** (every 30s): Poll all servers for active sessions
+- **Session cleanup** (every 5min): Remove stale session records
+- **Analytics collection**: Track bandwidth, playback events, daily statistics
+
+Beat schedule defined in `worker/worker/celery_app.py`.
+
+## Database Models
+
+Core models in `backend/app/models/`:
+
+- **User**: TowerView users (admin/staff/support) and media server users
+- **Server**: Media server configurations
+- **Credential**: Encrypted credentials for media servers
+- **Session**: Active streaming sessions
+- **AuditLog**: Complete audit trail of administrative actions
+- **PlaybackEvent/DailyAnalytics**: Playback metrics and aggregated analytics
+- **UserPermission**: Per-server permissions for staff users
+- **SystemSettings**: Site configuration (name, Portainer integration)
+
+## Frontend Architecture
+
+### State Management
+
+- **Zustand** for global state (auth, server selection)
+- **React Query** for server state and caching
+- **Local state** for component-specific UI state
+
+Main stores in `frontend/src/store/`:
+- `authStore.ts` - Authentication state with persistence
+
+### Component Organization
+
+- `components/admin/` - Admin-specific components (Servers, Users, Analytics, Settings)
+- `components/` - Shared components (Layout, ErrorBoundary, Modals)
+- `pages/` - Top-level page components
+- `services/` - API client services
+- `hooks/` - Custom React hooks
+
+### API Integration
+
+API client in `frontend/src/services/api.ts` handles:
+- Request/response interceptors
+- Automatic token refresh
+- Error handling and retries
+- Type-safe API calls
+
+## API Routes
+
+Routes defined in `backend/app/api/routes/`:
+
+- **auth.py**: Login, logout, refresh tokens, password changes
+- **admin.py**: Servers, sessions, users, analytics, audit logs, cache management
+- **settings.py**: Portainer integration, site settings, container management
+- **users.py**: Current user profile
+- **websocket_metrics.py**: Real-time metrics WebSocket
+
+## Environment Configuration
+
+Copy `.env.example` to `.env` and configure:
+
+```bash
+# Database
+DATABASE_URL=postgresql://mediaapp:password@db:5432/mediaapp
+
+# Redis
+REDIS_URL=redis://redis:6379
+
+# Security (generate new keys for production)
+SECRET_KEY=your-secret-key
+JWT_SECRET_KEY=your-jwt-key
+
+# Admin credentials
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=secure_password
+```
+
+## Important Implementation Notes
+
+### Credential Encryption
+
+Media server credentials are encrypted before storage using Fernet encryption. See `worker/worker/encryption.py` and `backend/app/services/server_service.py`.
+
+### HDR and Resolution Detection
+
+Version 2.3.2+ includes comprehensive HDR detection across all providers. HDR fields include:
+- HDR10, Dolby Vision, HDR10+
+- 4K detection supports cinema formats (>= 2000 pixels)
+- Resolution shows actual playing resolution (direct play vs transcoded)
+
+See provider implementations for details.
+
+### Plex OAuth Flow
+
+Plex supports both direct username/password and OAuth authentication. OAuth flow:
+1. Generate PIN via Plex API
+2. User authorizes at plex.tv/link
+3. Poll for PIN completion
+4. Exchange PIN for auth token
+
+Implemented in `backend/app/api/routes/auth.py` and `frontend/src/components/MediaLoginModal.tsx`.
+
+### Library Access Pre-checking
+
+For Emby/Jellyfin users, library access is pre-checked based on current user permissions before displaying the library management modal. This prevents users from seeing libraries they don't have access to.
+
+## Common Patterns
+
+### Adding a New Media Server Provider
+
+1. Create new provider class extending `BaseProvider` in `backend/app/providers/`
+2. Implement required methods: `get_sessions()`, `get_users()`, `terminate_session()`, etc.
+3. Add provider type to `ServerType` enum in models
+4. Update factory in `providers/factory.py`
+5. Add frontend UI for provider-specific settings
+
+### Adding a New Background Task
+
+1. Define task in `worker/worker/tasks.py` with `@celery_app.task` decorator
+2. Add beat schedule to `worker/worker/celery_app.py` if periodic
+3. Ensure proper error handling and logging
+4. Consider task time limits and retries
+
+### Adding a New API Endpoint
+
+1. Add route to appropriate router in `backend/app/api/routes/`
+2. Define Pydantic schemas in `backend/app/schemas/`
+3. Implement business logic in `backend/app/services/`
+4. Add audit logging for admin actions
+5. Update frontend API service in `frontend/src/services/`
+
+### Adding Cache Management
+
+1. Create cache service extending the pattern in existing cache services
+2. Start/stop service in FastAPI `lifespan` context (`backend/app/main.py`)
+3. Add cache status and refresh endpoints in admin routes
+4. Configure appropriate TTL and refresh intervals
+
+## Testing
+
+Currently no automated tests are configured. When adding tests:
+
+- Backend: Use pytest with FastAPI TestClient
+- Frontend: Use Vitest + React Testing Library
+- Integration: Test against actual media server instances or mocks
+
+## Production Deployment
+
+Use `deploy.sh` for automated production deployment:
+
+```bash
+./deploy.sh
+```
+
+This script:
+- Generates secure passwords
+- Builds the all-in-one container
+- Starts services using `docker-compose.production.yml`
+- Displays admin credentials
+
+For manual deployment:
+
+```bash
+docker-compose -f docker-compose.production.yml up -d
+```
+
+## Logging
+
+- Backend logging configured in `backend/app/main.py`
+- Plex provider has DEBUG logging enabled for hardware transcoding details
+- View logs: `docker-compose logs -f [service]`
+
+## Database Backups
+
+```bash
+# Backup
+docker exec towerview-db-1 pg_dump -U towerview towerview > backup.sql
+
+# Restore
+docker exec -i towerview-db-1 psql -U towerview towerview < backup.sql
+```
+
+## Security Considerations
+
+- Never commit `.env` files or credentials
+- Rotate JWT secrets in production
+- Use strong passwords for admin accounts
+- Enable SSL/TLS in production (configure nginx)
+- Credential encryption uses Fernet symmetric encryption
+- Audit logs track all administrative actions with IP and user agent
+
+## Password Hash Stability
+
+**Problem**: After container rebuilds, bcrypt password hashes may become incompatible, causing login failures.
+
+**Solution Implemented**:
+1. **Stable bcrypt configuration** (`backend/app/core/security.py`):
+   - Explicit `bcrypt__ident="2b"` for consistent hash prefix
+   - Fixed `bcrypt__rounds=12` for stability
+
+2. **Automatic migration** (`backend/app/core/password_migration.py`):
+   - Runs on every application startup
+   - Detects incompatible password hashes
+   - Auto-resets affected passwords to "admin" with `must_change_password=True`
+   - Logs all migrations for admin awareness
+
+3. **Startup integration** (`backend/app/main.py`):
+   - `startup_password_check()` runs during application lifespan
+   - Transparent to users - no manual intervention needed
+
+**What happens on container rebuild**:
+- Application starts → checks all staff user passwords
+- If hashes are incompatible → automatically resets to "admin"
+- Affected users see migration in logs
+- Users must change password on next login
+
+This prevents the recurring "incorrect credentials" issue after Docker updates.

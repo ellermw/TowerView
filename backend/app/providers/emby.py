@@ -680,29 +680,144 @@ class EmbyProvider(BaseProvider):
         """Get Emby libraries"""
         try:
             async with httpx.AsyncClient(verify=False) as client:
+                # First try the VirtualFolders endpoint
                 response = await client.get(
                     f"{self.base_url}/Library/VirtualFolders",
                     headers={"X-Emby-Token": self.admin_token or self.api_key},
                     timeout=10.0
                 )
 
-                if response.status_code != 200:
-                    return []
+                if response.status_code == 200:
+                    libraries_data = response.json()
+                    libraries = []
 
-                libraries_data = response.json()
-                libraries = []
+                    for library in libraries_data:
+                        libraries.append({
+                            "id": library.get("ItemId", library.get("Id")),
+                            "title": library.get("Name"),
+                            "type": library.get("CollectionType")
+                        })
 
-                for library in libraries_data:
-                    libraries.append({
-                        "id": library.get("ItemId"),
-                        "title": library.get("Name"),
-                        "type": library.get("CollectionType")
-                    })
+                    logger.info(f"Found {len(libraries)} Emby libraries via VirtualFolders")
+                    return libraries
 
-                return libraries
+                # If VirtualFolders fails, try the user views endpoint
+                logger.warning(f"VirtualFolders failed with {response.status_code}, trying user views")
 
-        except Exception:
+                # Get current user info to get user ID
+                user_response = await client.get(
+                    f"{self.base_url}/Users/Me",
+                    headers={"X-Emby-Token": self.admin_token or self.api_key},
+                    timeout=10.0
+                )
+
+                if user_response.status_code == 200:
+                    user_data = user_response.json()
+                    user_id = user_data.get("Id")
+
+                    # Get views for this user
+                    views_response = await client.get(
+                        f"{self.base_url}/Users/{user_id}/Views",
+                        headers={"X-Emby-Token": self.admin_token or self.api_key},
+                        timeout=10.0
+                    )
+
+                    if views_response.status_code == 200:
+                        views_data = views_response.json()
+                        libraries = []
+
+                        for item in views_data.get("Items", []):
+                            libraries.append({
+                                "id": item.get("Id"),
+                                "title": item.get("Name"),
+                                "type": item.get("CollectionType", item.get("Type"))
+                            })
+
+                        logger.info(f"Found {len(libraries)} Emby libraries via user views")
+                        return libraries
+
+                logger.error(f"Failed to fetch Emby libraries")
+                return []
+
+        except Exception as e:
+            logger.error(f"Error fetching Emby libraries: {e}")
             return []
+
+    async def change_user_password(self, provider_user_id: str, new_password: str, current_password: Optional[str] = None) -> bool:
+        """Change Emby user password"""
+        try:
+            async with httpx.AsyncClient(verify=False) as client:
+                # Prepare password data
+                password_data = {
+                    "NewPw": new_password
+                }
+
+                # If current password provided, add it (for non-admin changes)
+                if current_password:
+                    password_data["CurrentPw"] = current_password
+                else:
+                    # Admin changing another user's password
+                    password_data["ResetPassword"] = True
+
+                response = await client.post(
+                    f"{self.base_url}/Users/{provider_user_id}/Password",
+                    json=password_data,
+                    headers={"X-Emby-Token": self.admin_token or self.api_key},
+                    timeout=10.0
+                )
+
+                return response.status_code in [200, 204]
+
+        except Exception as e:
+            logger.error(f"Failed to change Emby user password: {e}")
+            return False
+
+    async def get_user_library_access(self, provider_user_id: str) -> Dict[str, Any]:
+        """Get user's current library access"""
+        try:
+            async with httpx.AsyncClient(verify=False) as client:
+                # Get user policy directly
+                response = await client.get(
+                    f"{self.base_url}/Users/{provider_user_id}/Policy",
+                    headers={"X-Emby-Token": self.admin_token or self.api_key},
+                    timeout=10.0
+                )
+
+                logger.info(f"Emby get_user_library_access status: {response.status_code}")
+
+                if response.status_code != 200:
+                    logger.error(f"Failed to get Emby user policy {provider_user_id}: {response.text}")
+                    return {"library_ids": [], "all_libraries": False}
+
+                policy = response.json()
+
+                logger.info(f"Emby user {provider_user_id} policy keys: {list(policy.keys())}")
+                logger.info(f"Emby EnableAllFolders: {policy.get('EnableAllFolders')}")
+                logger.info(f"Emby EnabledFolders: {policy.get('EnabledFolders')}")
+
+                # Also check if there's any other field that might contain library info
+                if 'Configuration' in user:
+                    logger.info(f"Emby user has Configuration: {user.get('Configuration')}")
+                if 'Policy' in user and policy:
+                    logger.info(f"Emby full Policy object: {policy}")
+
+                # Check if user has access to all libraries
+                all_libraries = policy.get("EnableAllFolders", False)
+
+                # Get enabled folder IDs
+                enabled_folders = policy.get("EnabledFolders", [])
+
+                result = {
+                    "library_ids": enabled_folders,
+                    "all_libraries": all_libraries
+                }
+                logger.info(f"Emby returning library access: {result}")
+                return result
+        except Exception as e:
+            logger.error(f"Failed to get Emby user library access: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return {"library_ids": [], "all_libraries": False}
 
     async def set_library_access(self, provider_user_id: str, library_ids: List[str]) -> bool:
         """Set library access for Emby user"""
