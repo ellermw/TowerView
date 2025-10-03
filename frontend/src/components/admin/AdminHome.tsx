@@ -612,7 +612,12 @@ export default function AdminHome() {
   const formatTime = (ms: number) => {
     const hours = Math.floor(ms / 3600000)
     const minutes = Math.floor((ms % 3600000) / 60000)
-    return `${hours}:${minutes.toString().padStart(2, '0')}`
+    const seconds = Math.floor((ms % 60000) / 1000)
+
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+    }
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
 
   const getProgressBarColor = (state: string) => {
@@ -719,19 +724,6 @@ export default function AdminHome() {
                 }
                 return null
               })}
-
-              {/* Total bandwidth line */}
-              <polyline
-                fill="none"
-                stroke="#FFFFFF"
-                strokeWidth="3"
-                vectorEffect="non-scaling-stroke"
-                points={bandwidthHistory.map((point, index) => {
-                  const x = (index / (bandwidthHistory.length - 1)) * 100
-                  const y = 95 - (point.totalBandwidth / maxBandwidth) * 85 // Use 85% with margins
-                  return `${x},${y}`
-                }).join(' ')}
-              />
 
               {/* Individual server lines */}
               {Object.keys(serverColors).map(serverName => (

@@ -430,6 +430,10 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
   - Prevents "incorrect credentials" errors after Docker updates
   - Created `backend/app/core/password_migration.py` for hash validation
   - Added comprehensive logging for password migrations
+- **UI Improvements**:
+  - Fixed progress bar time display to show minutes:seconds or hours:minutes:seconds
+  - Removed total bandwidth line from graph for cleaner visualization
+  - Total bandwidth still displayed below graph with individual server breakdowns
 - **Documentation**:
   - Added `CLAUDE.md` with detailed architecture and development guidelines
   - Updated security documentation with password stability information
