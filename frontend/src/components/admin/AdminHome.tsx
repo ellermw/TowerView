@@ -655,7 +655,20 @@ export default function AdminHome() {
     // Ensure we have a reasonable range for the graph
     const bandwidthRange = maxBandwidth - minBandwidth
     // If range is too small, adjust to avoid division issues
-    const adjustedMaxBandwidth = bandwidthRange < 1000 ? minBandwidth + 10000 : maxBandwidth
+    let adjustedMaxBandwidth = bandwidthRange < 1000 ? minBandwidth + 10000 : maxBandwidth
+    let adjustedMinBandwidth = minBandwidth
+
+    // If we have no server data, try to estimate from total
+    if (allServerBandwidthsRaw.length === 0 && bandwidthHistory.length > 0) {
+      const latestTotal = bandwidthHistory[bandwidthHistory.length - 1].totalBandwidth
+      if (latestTotal > 0) {
+        // No individual server data but have total - estimate max as half of total
+        // (assuming at least 2 servers sharing the load)
+        const estimatedServerMax = latestTotal / 2
+        adjustedMaxBandwidth = estimatedServerMax * 1.2
+        adjustedMinBandwidth = estimatedServerMax * 0.1
+      }
+    }
 
     const formatTimestamp = (timestamp: number) => {
       const date = new Date(timestamp)
@@ -667,13 +680,13 @@ export default function AdminHome() {
     }
 
     // Create evenly spaced intervals between min and max
-    const displayRange = adjustedMaxBandwidth - minBandwidth
+    const displayRange = adjustedMaxBandwidth - adjustedMinBandwidth
     const bandwidthIntervals = [
       adjustedMaxBandwidth,
-      minBandwidth + displayRange * 0.75,
-      minBandwidth + displayRange * 0.5,
-      minBandwidth + displayRange * 0.25,
-      minBandwidth
+      adjustedMinBandwidth + displayRange * 0.75,
+      adjustedMinBandwidth + displayRange * 0.5,
+      adjustedMinBandwidth + displayRange * 0.25,
+      adjustedMinBandwidth
     ]
 
     return (
@@ -692,7 +705,7 @@ export default function AdminHome() {
 
               {/* Horizontal bandwidth interval lines */}
               {bandwidthIntervals.slice(1, -1).map((bandwidth, index) => {
-                const y = ((adjustedMaxBandwidth - bandwidth) / (adjustedMaxBandwidth - minBandwidth)) * 85 + 5 // 5% top margin, 10% bottom margin
+                const y = ((adjustedMaxBandwidth - bandwidth) / (adjustedMaxBandwidth - adjustedMinBandwidth)) * 85 + 5 // 5% top margin, 10% bottom margin
                 return (
                   <line
                     key={index}
@@ -741,8 +754,8 @@ export default function AdminHome() {
                   points={bandwidthHistory.map((point, index) => {
                     const x = (index / (bandwidthHistory.length - 1)) * 100
                     const bandwidth = point.serverBandwidths[serverName] || 0
-                    // Scale bandwidth relative to the min-max range
-                    const y = 95 - ((bandwidth - minBandwidth) / (adjustedMaxBandwidth - minBandwidth)) * 85
+                    // Scale bandwidth relative to the adjusted min-max range
+                    const y = 95 - ((bandwidth - adjustedMinBandwidth) / (adjustedMaxBandwidth - adjustedMinBandwidth)) * 85
                     return `${x},${y}`
                   }).join(' ')}
                 />
