@@ -434,13 +434,14 @@ class PortainerService:
             }
 
             async with self.session.post(create_url, headers=headers, params=create_params, json=create_body, ssl=False) as response:
-                if response.status != 201:
-                    error = await response.text()
-                    logger.error(f"Failed to create new container: {error}")
-                    return {"success": False, "message": "Failed to create new container"}
-
                 result = await response.json()
                 new_container_id = result.get("Id")
+
+                # Check if container was created (Portainer returns 200 or 201 with an Id)
+                if response.status not in [200, 201] or not new_container_id:
+                    error = await response.text() if response.status not in [200, 201] else "No container ID returned"
+                    logger.error(f"Failed to create new container: {error}")
+                    return {"success": False, "message": "Failed to create new container"}
 
             # Start the new container
             start_url = f"{url}/api/endpoints/{endpoint_id}/docker/containers/{new_container_id}/start"
