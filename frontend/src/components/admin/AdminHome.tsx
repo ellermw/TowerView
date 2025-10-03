@@ -290,6 +290,12 @@ export default function AdminHome() {
 
       const currentSessions = sessionsRef.current
       if (currentSessions && Array.isArray(currentSessions) && currentSessions.length > 0) {
+        // Debug: Log first session to see structure
+        if (currentSessions.length > 0 && !window._debugLogged) {
+          console.log('Session structure:', currentSessions[0])
+          window._debugLogged = true
+        }
+
         currentSessions.forEach(session => {
           const bandwidth = session.session_bandwidth ?
             (typeof session.session_bandwidth === 'string' ?
