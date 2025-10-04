@@ -467,20 +467,48 @@ class PlexProvider(BaseProvider):
                                 else:
                                     session_data["stream_resolution"] = f"{h}p"
 
-                                # Try to infer original resolution if not from 4K library
-                                if not session_data.get("original_resolution"):
-                                    # When transcoding down, source is usually higher quality
-                                    if h < 480:
-                                        session_data["original_resolution"] = "1080p"  # Very low transcode suggests HD/4K source
-                                    elif h < 720:
-                                        session_data["original_resolution"] = "720p"  # SD transcode suggests 720p+ source
-                                    elif h < 1080:
-                                        session_data["original_resolution"] = "1080p"  # 720p transcode suggests 1080p+ source
+                            # Try to infer original resolution if not already set
+                            if not session_data.get("original_resolution"):
+                                # Get the stream resolution (either from TranscodeSession or Media height)
+                                stream_res = session_data.get("stream_resolution")
+                                if stream_res:
+                                    # Parse the stream resolution to determine source
+                                    if stream_res == "4K":
+                                        # 4K transcode is likely from 4K source
+                                        session_data["original_resolution"] = "4K"
+                                    elif stream_res == "1080p":
+                                        # 1080p transcode could be from 1080p (codec conversion) or 4K
+                                        # Default to 1080p since it's more common for codec conversion
+                                        session_data["original_resolution"] = "1080p"
+                                    elif stream_res in ["720p", "480p", "360p", "SD"]:
+                                        # Lower quality transcodes are usually from 1080p sources
+                                        session_data["original_resolution"] = "1080p"
                                     else:
-                                        session_data["original_resolution"] = "4K"  # 1080p transcode suggests 4K source
+                                        # Default to 1080p for any unrecognized format
+                                        session_data["original_resolution"] = "1080p"
+                                else:
+                                    # No stream resolution found, default to 1080p
+                                    session_data["original_resolution"] = "1080p"
                         else:
                             # Direct play - use videoResolution
-                            session_data["original_resolution"] = video_res
+                            if video_res:
+                                session_data["original_resolution"] = video_res
+                            elif media_height:
+                                # Fallback to height-based detection if videoResolution is missing
+                                h = int(media_height)
+                                if h >= 2000:
+                                    session_data["original_resolution"] = "4K"
+                                elif h >= 1080:
+                                    session_data["original_resolution"] = "1080p"
+                                elif h >= 720:
+                                    session_data["original_resolution"] = "720p"
+                                elif h >= 480:
+                                    session_data["original_resolution"] = "480p"
+                                else:
+                                    session_data["original_resolution"] = "SD"
+                            else:
+                                # Last resort - assume 1080p as it's most common
+                                session_data["original_resolution"] = "1080p"
 
                         session_data["is_4k"] = video_res == "4k"
 
