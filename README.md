@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-**Version 2.3.10 - Bug Fixes**
+**Version 2.3.11 - Analytics Page**
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -22,6 +22,7 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
   - **Servers**: Add/edit/remove media servers
   - **Users**: View media server users (password management for Emby/Jellyfin only)
   - **System Users**: Create and manage TowerView users (admin only)
+- **Analytics**: Detailed analytics page with category filtering (admin/staff/support only)
 - **Audit Logs**: View all system activity (admin only)
 - **Settings**: System configuration and integrations
 
@@ -47,6 +48,12 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 
 ### Analytics & Monitoring
 
+- **Dedicated Analytics Page**: Comprehensive analytics with category-based filtering
+  - Filter by server, time period (24H, 7D, 30D, 180D, 365D), and category
+  - Categories: Top Users, Top Movies, Top TV Shows, Top Libraries, Top Devices
+  - Shows up to 100 items per category (vs 5 on dashboard)
+  - Summary cards: Total Sessions, Active Users, Watch Time, Completion Rate, Transcode Rate
+  - Available to Admin, Staff, and Support users
 - **Real-time bandwidth monitoring** with 90-second historical view (5-second intervals)
 - **Server-side bandwidth caching** for immediate history on dashboard load
 - **Enhanced bandwidth graph** with separated Y-axis labels and full-width display
@@ -420,7 +427,19 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.10 (Current)
+### Version 2.3.11 (Current)
+- **Analytics Page**:
+  - New dedicated Analytics page accessible from navigation bar
+  - Visible to Admin, Staff, and Support users (not media users)
+  - Category-based filtering: Top Users, Movies, TV Shows, Libraries, Devices
+  - Time period filters: Last 24 Hours, 7 Days, 30 Days, 180 Days, 365 Days
+  - Server-specific filtering or view all servers combined
+  - Shows up to 100 items per category (vs 5 on dashboard)
+  - Summary cards for quick overview of key metrics
+  - Only selected category displayed at a time (no "show all" option)
+  - Located between Management and Audit Logs in navigation
+
+### Version 2.3.10
 - **Bug Fixes**:
   - Fixed transcode settings save error - audit log was using old schema fields
   - Settings were saving correctly but showing "Failed to save" error message

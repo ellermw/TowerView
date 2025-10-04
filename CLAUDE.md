@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TowerView is a unified media server management platform that provides a single administrative interface for managing multiple media servers (Plex, Jellyfin, Emby). It includes real-time monitoring, user management, session control, analytics, and Docker container management via Portainer integration.
 
-**Current Version:** 2.3.10
+**Current Version:** 2.3.11
 
 ## Architecture
 
@@ -471,3 +471,25 @@ New feature in v2.3.9 allows automatic termination of 4K to 1080p (or below) tra
 - **Known Issues Fixed in v2.3.10**:
   - Fixed audit log schema mismatch causing false "Failed to save" error
   - Settings were saving correctly but audit log creation was failing
+
+### Analytics Page
+New dedicated Analytics page in v2.3.11:
+- **Location**: Navigation bar between Management and Audit Logs
+- **Access**: Visible to all system users (Admin, Staff, Support) but NOT media users
+- **Features**:
+  - Server filter: View analytics for all servers or a specific server
+  - Time period filter: Last 24 Hours, 7 Days, 30 Days, 180 Days, 365 Days (defaults to 7 days)
+  - Category filter: Top Users, Top Movies, Top TV Shows, Top Libraries, Top Devices
+  - Summary cards: Total Sessions, Active Users, Watch Time, Completion Rate, Transcode Rate
+  - Detailed tables: Shows up to 100 items per category (vs 5 on dashboard)
+  - Category-specific view: Only selected category displayed at a time (no "show all" option)
+- **Implementation**:
+  - Frontend: `/frontend/src/components/admin/Analytics.tsx`
+  - Route: `/admin/analytics` in AdminDashboard.tsx
+  - Navigation: Layout.tsx with role-based visibility
+  - Backend: Uses existing `/admin/analytics` endpoint with 100-item limit
+  - Data source: `analytics_service.py` queries playback_events table
+- **React Query Configuration**:
+  - `staleTime: 0` - Always fetch fresh data on filter change
+  - `cacheTime: 0` - No caching to ensure filters work correctly
+  - Query key includes filters for proper cache invalidation

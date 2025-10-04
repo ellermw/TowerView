@@ -291,11 +291,11 @@ class AnalyticsService:
 
         return DashboardAnalyticsResponse(
             filters=filters,
-            top_users=self.get_top_users(filters, allowed_server_ids=allowed_server_ids),
-            top_movies=self.get_top_movies(filters, allowed_server_ids=allowed_server_ids),
-            top_tv_shows=self.get_top_tv_shows(filters, allowed_server_ids=allowed_server_ids),
-            top_libraries=self.get_top_libraries(filters, allowed_server_ids=allowed_server_ids),
-            top_devices=self.get_top_devices(filters, allowed_server_ids=allowed_server_ids),
+            top_users=self.get_top_users(filters, limit=100, allowed_server_ids=allowed_server_ids),
+            top_movies=self.get_top_movies(filters, limit=100, allowed_server_ids=allowed_server_ids),
+            top_tv_shows=self.get_top_tv_shows(filters, limit=100, allowed_server_ids=allowed_server_ids),
+            top_libraries=self.get_top_libraries(filters, limit=100, allowed_server_ids=allowed_server_ids),
+            top_devices=self.get_top_devices(filters, limit=100, allowed_server_ids=allowed_server_ids),
             total_sessions=total_sessions,
             total_users=total_users,
             total_watch_time_hours=total_watch_time_hours,

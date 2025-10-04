@@ -19,7 +19,9 @@ class AnalyticsRequest(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     server_ids: Optional[List[int]] = None
+    server_id: Optional[int] = None
     user_ids: Optional[List[str]] = None
+    days_back: Optional[int] = 7
 
 class BandwidthHistory(BaseModel):
     history: List[Dict[str, Any]]
@@ -83,11 +85,16 @@ async def get_analytics(
     analytics_service = AnalyticsService(db)
 
     # Convert AnalyticsRequest to AnalyticsFilters
+    # Support both server_id and server_ids[0] for backwards compatibility
+    server_id_filter = filters.server_id if filters.server_id else (
+        filters.server_ids[0] if filters.server_ids and len(filters.server_ids) == 1 else None
+    )
+
     analytics_filters = AnalyticsFilters(
-        server_id=filters.server_ids[0] if filters.server_ids and len(filters.server_ids) == 1 else None,
+        server_id=server_id_filter,
         start_date=datetime.fromisoformat(filters.start_date) if filters.start_date else None,
         end_date=datetime.fromisoformat(filters.end_date) if filters.end_date else None,
-        days_back=7  # Default value
+        days_back=filters.days_back if filters.days_back else 7
     )
 
     # Determine allowed servers based on user type

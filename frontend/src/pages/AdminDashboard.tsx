@@ -3,6 +3,7 @@ import AdminHome from '../components/admin/AdminHome'
 import UnifiedServerManagement from '../components/admin/UnifiedServerManagement'
 import UsersList from '../components/admin/UsersList'
 import LocalUsersManagement from '../components/admin/LocalUsersManagement'
+import Analytics from '../components/admin/Analytics'
 import AuditLogs from '../components/admin/AuditLogs'
 import Settings from '../components/admin/Settings'
 import ErrorBoundary from '../components/ErrorBoundary'
@@ -15,6 +16,7 @@ export default function AdminDashboard() {
       <Route path="/servers" element={<UnifiedServerManagement />} />
       <Route path="/users" element={<UsersList />} />
       <Route path="/local-users" element={<LocalUsersManagement />} />
+      <Route path="/analytics" element={<Analytics />} />
       <Route path="/audit" element={<AuditLogs />} />
       <Route path="/settings" element={<Settings />} />
     </Routes>

@@ -72,6 +72,11 @@ export default function Layout({ children }: LayoutProps) {
         management.push({ name: 'System Users', href: '/admin/local-users' })
       }
 
+      // Analytics - visible to all system users (admin, staff, support)
+      if (isAdmin || isLocalUser) {
+        nav.push({ name: 'Analytics', href: '/admin/analytics' })
+      }
+
       // Audit Logs - requires view_audit_logs permission
       if (isAdmin || hasPermission('view_audit_logs')) {
         nav.push({ name: 'Audit Logs', href: '/admin/audit' })

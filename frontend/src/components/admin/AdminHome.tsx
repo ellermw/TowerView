@@ -260,6 +260,8 @@ export default function AdminHome() {
     {
       refetchInterval: 5000, // Refresh every 5 seconds
       refetchOnWindowFocus: false,
+      staleTime: 0, // Always consider data stale to ensure fresh fetch on filter change
+      cacheTime: 0, // Don't cache analytics data
       onError: (_error) => {
         // Error handling - silenced in production
       },
