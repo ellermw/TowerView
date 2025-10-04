@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-## Version 2.3.13 - Library Management Fix
+## Version 2.3.14 - Jellyfin Library Management Fix
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -397,7 +397,18 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.13 (Current)
+### Version 2.3.14 (Current)
+
+- **Jellyfin Library Management Fix**:
+  - Fixed double-slash URL issue in Jellyfin provider (`//Users/` → `/Users/`)
+  - Added `base_url.rstrip('/')` to prevent trailing slash conflicts
+  - Fixed `get_user_library_access()` method URL construction
+  - Fixed `set_user_library_access()` method URL construction
+  - Libraries now pre-check correctly for Jellyfin users
+  - Saving library changes now works properly for Jellyfin
+  - No more 404 errors when fetching user policy from Jellyfin
+
+### Version 2.3.13
 
 - **Library Management Feature - Complete Implementation**:
   - Added library access management for Emby and Jellyfin users

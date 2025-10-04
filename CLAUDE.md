@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TowerView is a unified media server management platform that provides a single administrative interface for managing multiple media servers (Plex, Jellyfin, Emby). It includes real-time monitoring, user management, session control, analytics, and Docker container management via Portainer integration.
 
-**Current Version:** 2.3.13
+**Current Version:** 2.3.14
 
 ## Architecture
 
@@ -314,6 +314,7 @@ Implemented in `backend/app/api/routes/auth.py` and `frontend/src/components/Med
 - `all_libraries=False` means user has access only to specified library_ids
 - Libraries sorted alphabetically by name for better UX
 - Audit logs track changes with server name, library count, and all_libraries status
+- **URL Construction**: Always use `base_url.rstrip('/')` to prevent double-slash issues (e.g., `https://server.com//Users/` → `https://server.com/Users/`)
 
 ## Common Patterns
 

@@ -653,7 +653,8 @@ class JellyfinProvider(BaseProvider):
         try:
             async with httpx.AsyncClient(verify=False) as client:
                 # Get full user object which contains the policy
-                user_url = f"{self.base_url}/Users/{provider_user_id}"
+                base = self.base_url.rstrip('/')
+                user_url = f"{base}/Users/{provider_user_id}"
                 logger.info(f"Jellyfin fetching user from: {user_url}")
 
                 response = await client.get(
@@ -703,7 +704,8 @@ class JellyfinProvider(BaseProvider):
         try:
             async with httpx.AsyncClient(verify=False) as client:
                 # Get current user to access the full Policy object
-                user_url = f"{self.base_url}/Users/{provider_user_id}"
+                base = self.base_url.rstrip('/')
+                user_url = f"{base}/Users/{provider_user_id}"
                 response = await client.get(
                     user_url,
                     headers={"Authorization": f"MediaBrowser Token={self.admin_token or self.api_key}"},
@@ -726,7 +728,7 @@ class JellyfinProvider(BaseProvider):
                     policy["EnabledFolders"] = []
 
                 # Update the policy
-                policy_url = f"{self.base_url}/Users/{provider_user_id}/Policy"
+                policy_url = f"{base}/Users/{provider_user_id}/Policy"
                 response = await client.post(
                     policy_url,
                     json=policy,
