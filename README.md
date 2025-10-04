@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-**Version 2.3.8 - Bandwidth Graph UI Refinements**
+**Version 2.3.9 - 4K Transcode Auto-Termination & Admin Permission Fixes**
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -52,6 +52,7 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 - **Enhanced bandwidth graph** with separated Y-axis labels and full-width display
 - **Server resource utilization** (CPU, RAM, GPU)
 - **Transcoding statistics** (hardware vs software detection)
+- **4K Transcode Auto-Termination**: Automatically terminate 4K to 1080p/lower transcodes with configurable grace period
 - **Active session tracking** with detailed user information
 - **Network throughput visualization** with upload/download metrics
 - **Container health monitoring** via Portainer integration
@@ -419,7 +420,40 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.6 (Current)
+### Version 2.3.9 (Current)
+- **4K Transcode Auto-Termination Feature**:
+  - Automatically terminate 4K to 1080p or below transcodes
+  - Configurable 5-second grace period before termination
+  - Server-specific selection (choose which servers to apply)
+  - Custom termination message for Plex users
+  - Cooldown period to prevent re-termination
+  - Located in Settings > General
+- **Admin Permission Fixes**:
+  - Fixed admin users unable to see servers they don't own
+  - Admins now have full access to view, update, and delete all servers
+  - Fixed permission checks in server API endpoints
+  - Staff/Support users still restricted to their own servers
+- **Bug Fixes**:
+  - Resolved "no servers available" issue for admins
+  - Fixed 403 errors on server version endpoints for admins
+
+### Version 2.3.8
+- **Enhanced Bandwidth Graph UI**:
+  - Separated Y-axis labels for cleaner appearance
+  - Full-width graph display for better data visualization
+  - Improved server legend alignment
+- **Session Termination Improvements**:
+  - Enhanced Plex session termination with proper error handling
+  - Better handling of already-terminated sessions
+  - Fixed concurrent termination issues
+
+### Version 2.3.7
+- **Bandwidth Monitoring Enhancements**:
+  - Improved bandwidth graph with better scaling and visualization
+  - Enhanced real-time metrics collection
+  - Fixed bandwidth calculation edge cases
+
+### Version 2.3.6
 - **Staff User Permissions**:
   - Fixed Staff users unable to terminate sessions (was incorrectly checking server ownership)
   - Added proper permission checks using UserPermission table

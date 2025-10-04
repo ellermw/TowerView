@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TowerView is a unified media server management platform that provides a single administrative interface for managing multiple media servers (Plex, Jellyfin, Emby). It includes real-time monitoring, user management, session control, analytics, and Docker container management via Portainer integration.
 
-**Current Version:** 2.3.8
+**Current Version:** 2.3.9
 
 ## Architecture
 
@@ -446,3 +446,25 @@ Container IDs may have changed. System auto-syncs every 5 minutes, or manually s
 
 ### Login Failures After Rebuild
 Password hashes are automatically migrated on startup. Check backend logs for migration status.
+
+### Servers Not Loading for Admin Users
+- Fixed in v2.3.9: Admin users now see all servers regardless of ownership
+- Previously admins were restricted to servers they owned
+- Permission checks updated: admins can now view, update, and delete any server
+- Staff/support users still restricted to servers they own
+- Issue was in `/backend/app/api/routes/admin/servers.py` permission logic
+
+### 4K Transcode Auto-Termination
+New feature in v2.3.9 allows automatic termination of 4K to 1080p (or below) transcodes:
+- **Location**: Settings > General > 4K Transcode Auto-Termination
+- **Features**:
+  - Enable/disable toggle
+  - Custom termination message (Plex only)
+  - Server-specific selection (checkboxes for each server)
+  - 5-second grace period before termination
+  - Cooldown period to prevent re-termination
+- **Implementation**:
+  - Service: `/backend/app/services/transcode_termination_service.py`
+  - API: `/backend/app/api/routes/settings/transcode.py`
+  - Frontend: Settings component with server selection UI
+  - Integrated with sessions cache service for real-time monitoring
