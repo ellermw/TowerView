@@ -4,6 +4,7 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 import httpx
 import uuid
+import os
 from datetime import datetime
 
 from ...core.database import get_db
@@ -16,6 +17,9 @@ from ...models.server import Server, ServerType
 from ...models.user import User, UserType
 
 router = APIRouter()
+
+# Configuration
+PLEX_API_TIMEOUT = float(os.getenv("PLEX_API_TIMEOUT", "10.0"))
 
 # OAuth response models
 class PlexOAuthInitResponse(BaseModel):
@@ -220,7 +224,7 @@ async def authenticate_media_user(
         # Plex OAuth authentication
         logger.info("Processing Plex OAuth authentication")
         # Get user's Plex servers
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=PLEX_API_TIMEOUT) as client:
             # Generate a client identifier for this request
             client_id = str(uuid.uuid4())
             servers_response = await client.get(
@@ -271,6 +275,8 @@ async def authenticate_media_user(
                                 "Accept": "application/json"
                             }
                         )
+
+                        logger.info(f"Plex user info response: status={user_response.status_code}, body={user_response.text[:500]}")
 
                         user_data = user_response.json() if user_response.status_code == 200 else {}
 

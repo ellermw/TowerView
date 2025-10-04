@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-### Version 2.3.12 - Plex OAuth Fix
+## Version 2.3.12 - Plex OAuth Fix
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
