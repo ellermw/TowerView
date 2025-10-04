@@ -66,10 +66,12 @@ async def update_transcode_settings(
 
         # Log the action
         audit_log = AuditLog(
-            user_id=current_user.id,
+            actor_id=current_user.id,
+            actor_username=current_user.username,
+            actor_type=current_user.type.value,
             action="update_transcode_settings",
-            target_type="settings",
-            target_id=None,
+            target="settings:transcode",
+            target_name="4K Transcode Auto-Termination",
             details={
                 "enabled": settings.auto_terminate_4k_enabled,
                 "message": settings.auto_terminate_message,
@@ -85,7 +87,7 @@ async def update_transcode_settings(
         return {"message": "Transcode settings updated successfully"}
 
     except Exception as e:
-        logger.error(f"Error updating transcode settings: {str(e)}")
+        logger.error(f"Error updating transcode settings: {str(e)}", exc_info=True)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

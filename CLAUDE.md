@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TowerView is a unified media server management platform that provides a single administrative interface for managing multiple media servers (Plex, Jellyfin, Emby). It includes real-time monitoring, user management, session control, analytics, and Docker container management via Portainer integration.
 
-**Current Version:** 2.3.9
+**Current Version:** 2.3.10
 
 ## Architecture
 
@@ -468,3 +468,6 @@ New feature in v2.3.9 allows automatic termination of 4K to 1080p (or below) tra
   - API: `/backend/app/api/routes/settings/transcode.py`
   - Frontend: Settings component with server selection UI
   - Integrated with sessions cache service for real-time monitoring
+- **Known Issues Fixed in v2.3.10**:
+  - Fixed audit log schema mismatch causing false "Failed to save" error
+  - Settings were saving correctly but audit log creation was failing

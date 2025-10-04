@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-**Version 2.3.9 - 4K Transcode Auto-Termination & Admin Permission Fixes**
+**Version 2.3.10 - Bug Fixes**
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -420,7 +420,13 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.9 (Current)
+### Version 2.3.10 (Current)
+- **Bug Fixes**:
+  - Fixed transcode settings save error - audit log was using old schema fields
+  - Settings were saving correctly but showing "Failed to save" error message
+  - Corrected audit log to use new schema (actor_id, actor_username, actor_type, target, target_name)
+
+### Version 2.3.9
 - **4K Transcode Auto-Termination Feature**:
   - Automatically terminate 4K to 1080p or below transcodes
   - Configurable 5-second grace period before termination
