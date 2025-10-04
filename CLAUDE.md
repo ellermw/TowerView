@@ -445,6 +445,7 @@ Container IDs may have changed. System auto-syncs every 5 minutes, or manually s
 - Session usernames now properly captured before termination
 
 ### Login Failures After Rebuild
+
 Password hashes are automatically migrated on startup. Check backend logs for migration status.
 
 ### Servers Not Loading for Admin Users
@@ -455,6 +456,7 @@ Password hashes are automatically migrated on startup. Check backend logs for mi
 - Issue was in `/backend/app/api/routes/admin/servers.py` permission logic
 
 ### 4K Transcode Auto-Termination
+
 New feature in v2.3.9 allows automatic termination of 4K to 1080p (or below) transcodes:
 - **Location**: Settings > General > 4K Transcode Auto-Termination
 - **Features**:
@@ -473,6 +475,7 @@ New feature in v2.3.9 allows automatic termination of 4K to 1080p (or below) tra
   - Settings were saving correctly but audit log creation was failing
 
 ### Analytics Page
+
 New dedicated Analytics page in v2.3.11:
 - **Location**: Navigation bar between Management and Audit Logs
 - **Access**: Visible to all system users (Admin, Staff, Support) but NOT media users

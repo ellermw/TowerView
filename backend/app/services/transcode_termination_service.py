@@ -3,7 +3,7 @@ Service for automatically terminating 4K transcodes
 """
 import asyncio
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, ClassVar
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
@@ -26,8 +26,9 @@ class TranscodeTerminationService:
     DEFAULT_MESSAGE = "4K transcoding is not allowed. Please use a client that supports direct play or choose a lower quality version."
 
     # Track session start times and terminated sessions
-    _session_start_times: Dict[str, datetime] = {}  # Track when we first saw a 4K transcode
-    _terminated_sessions: Dict[str, datetime] = {}  # Track terminated sessions to avoid duplicates
+    _session_start_times: ClassVar[Dict[str, datetime]] = {}  # Track when we first saw a 4K transcode
+    _terminated_sessions: ClassVar[Dict[str, datetime]] = {}  # Track terminated sessions to avoid duplicates
+    _lock: ClassVar[asyncio.Lock] = asyncio.Lock()  # Protect shared class variables from race conditions
     GRACE_PERIOD = timedelta(seconds=5)  # Allow 5 seconds before termination
     TERMINATION_COOLDOWN = timedelta(minutes=5)  # Don't re-terminate same user/title for 5 minutes
 
@@ -113,18 +114,23 @@ class TranscodeTerminationService:
         terminated_count = 0
         now = datetime.utcnow()
 
-        # Clean up old records
-        cls._terminated_sessions = {
-            k: v for k, v in cls._terminated_sessions.items()
-            if now - v < cls.TERMINATION_COOLDOWN
-        }
+        # Clean up old records with lock protection
+        async with cls._lock:
+            cls._terminated_sessions = {
+                k: v for k, v in cls._terminated_sessions.items()
+                if now - v < cls.TERMINATION_COOLDOWN
+            }
 
-        # Clean up old session start times (remove sessions that are no longer active)
-        active_session_keys = {f"{s.get('server_id')}_{s.get('session_id')}" for s in sessions}
-        cls._session_start_times = {
-            k: v for k, v in cls._session_start_times.items()
-            if k in active_session_keys
-        }
+            # Clean up old session start times (remove sessions that are no longer active)
+            active_session_keys = {
+                f"{s.get('server_id')}_{s.get('session_id')}"
+                for s in sessions
+                if s.get('server_id') and s.get('session_id')
+            }
+            cls._session_start_times = {
+                k: v for k, v in cls._session_start_times.items()
+                if k in active_session_keys
+            }
 
         for session in sessions:
             # Skip if server is not in the enabled list
@@ -136,28 +142,30 @@ class TranscodeTerminationService:
             if not cls._is_4k_downscale_transcode(session):
                 continue
 
-            # Create session tracking key
+            # Create session tracking key (server_id + session_id) for per-session grace period tracking
             session_track_key = f"{server_id}_{session.get('session_id')}"
 
-            # Track when we first saw this 4K transcode
-            if session_track_key not in cls._session_start_times:
-                cls._session_start_times[session_track_key] = now
-                logger.debug(f"Started tracking 4K transcode session {session_track_key}")
-                continue  # Don't terminate yet, start grace period
+            # Check session state and decide on termination with lock protection
+            async with cls._lock:
+                # Track when we first saw this 4K transcode
+                if session_track_key not in cls._session_start_times:
+                    cls._session_start_times[session_track_key] = now
+                    logger.debug(f"Started tracking 4K transcode session {session_track_key}")
+                    continue  # Don't terminate yet, start grace period
 
-            # Check if grace period has passed
-            session_start = cls._session_start_times[session_track_key]
-            if now - session_start < cls.GRACE_PERIOD:
-                remaining = (cls.GRACE_PERIOD - (now - session_start)).total_seconds()
-                logger.debug(f"Session {session_track_key} in grace period, {remaining:.1f}s remaining")
-                continue
+                # Check if grace period has passed
+                session_start = cls._session_start_times[session_track_key]
+                if now - session_start < cls.GRACE_PERIOD:
+                    remaining = (cls.GRACE_PERIOD - (now - session_start)).total_seconds()
+                    logger.debug(f"Session {session_track_key} in grace period, {remaining:.1f}s remaining")
+                    continue
 
-            # Check if we recently terminated this session (user/title combination)
-            username = session.get("username", "")
-            session_key = f"{server_id}_{username}_{session.get('title')}"
-            if session_key in cls._terminated_sessions:
-                logger.debug(f"Recently terminated session for {username}, skipping")
-                continue
+                # Check if we recently terminated this session (server_id + username + title) for cooldown across all sessions of same content
+                username = session.get("username", "")
+                session_key = f"{server_id}_{username}_{session.get('title')}"
+                if session_key in cls._terminated_sessions:
+                    logger.debug(f"Recently terminated session for {username}, skipping")
+                    continue
 
             # Get the server
             server = db.query(Server).filter_by(id=session["server_id"]).first()
@@ -186,10 +194,13 @@ class TranscodeTerminationService:
 
                 if success:
                     terminated_count += 1
-                    cls._terminated_sessions[session_key] = now
 
-                    # Remove from tracking
-                    del cls._session_start_times[session_track_key]
+                    # Update shared state with lock protection
+                    async with cls._lock:
+                        cls._terminated_sessions[session_key] = now
+                        # Remove from tracking
+                        if session_track_key in cls._session_start_times:
+                            del cls._session_start_times[session_track_key]
 
                     # Log the termination
                     audit_log = AuditLog(

@@ -86,9 +86,13 @@ async def get_analytics(
 
     # Convert AnalyticsRequest to AnalyticsFilters
     # Support both server_id and server_ids[0] for backwards compatibility
-    server_id_filter = filters.server_id if filters.server_id else (
-        filters.server_ids[0] if filters.server_ids and len(filters.server_ids) == 1 else None
-    )
+    if filters.server_ids and len(filters.server_ids) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Multiple server_ids not supported. Use server_id for single server filtering."
+        )
+
+    server_id_filter = filters.server_id or (filters.server_ids[0] if filters.server_ids else None)
 
     analytics_filters = AnalyticsFilters(
         server_id=server_id_filter,

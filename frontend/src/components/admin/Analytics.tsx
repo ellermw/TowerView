@@ -1,6 +1,6 @@
 import React from 'react'
 import { useQuery } from 'react-query'
-import api from '../../services/api'
+import { api } from '../../services/api'
 
 interface DashboardAnalytics {
   total_sessions: number
@@ -53,8 +53,8 @@ export default function Analytics() {
     ['analytics-page', filters],
     () => api.post('/admin/analytics', filters).then(res => res.data),
     {
-      staleTime: 0,
-      cacheTime: 0,
+      staleTime: 30000, // Consider data fresh for 30 seconds
+      cacheTime: 300000, // Keep in cache for 5 minutes
     }
   )
 
@@ -79,10 +79,11 @@ export default function Analytics() {
         <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6 mb-6">
           <div className="flex gap-4 flex-wrap">
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+              <label htmlFor="server-select" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Server
               </label>
               <select
+                id="server-select"
                 value={filters.server_id || ''}
                 onChange={(e) => setFilters(prev => ({
                   ...prev,
@@ -100,10 +101,11 @@ export default function Analytics() {
             </div>
 
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+              <label htmlFor="time-period-select" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Time Period
               </label>
               <select
+                id="time-period-select"
                 value={filters.days_back}
                 onChange={(e) => setFilters(prev => ({
                   ...prev,
@@ -120,10 +122,11 @@ export default function Analytics() {
             </div>
 
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+              <label htmlFor="category-select" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Category
               </label>
               <select
+                id="category-select"
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className="w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 text-slate-900 dark:text-white"
@@ -174,14 +177,14 @@ export default function Analytics() {
               <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
                 <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">Completion Rate</div>
                 <div className="text-3xl font-bold text-slate-900 dark:text-white">
-                  {analytics.completion_rate?.toFixed(1) || 0}%
+                  {(analytics.completion_rate ?? 0).toFixed(1)}%
                 </div>
               </div>
 
               <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
                 <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">Transcode Rate</div>
                 <div className="text-3xl font-bold text-slate-900 dark:text-white">
-                  {analytics.transcode_rate?.toFixed(1) || 0}%
+                  {(analytics.transcode_rate ?? 0).toFixed(1)}%
                 </div>
               </div>
             </div>
@@ -232,10 +235,10 @@ export default function Analytics() {
                           {user.total_plays}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">
-                          {Math.floor(user.total_watch_time_minutes / 60)}h {user.total_watch_time_minutes % 60}m
+                          {Math.floor((user.total_watch_time_minutes ?? 0) / 60)}h {(user.total_watch_time_minutes ?? 0) % 60}m
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">
-                          {user.completion_rate?.toFixed(1)}%
+                          {(user.completion_rate ?? 0).toFixed(1)}%
                         </td>
                       </tr>
                     ))}
@@ -277,7 +280,7 @@ export default function Analytics() {
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                     {analytics.top_movies?.map((movie, index) => (
-                      <tr key={index} className="hover:bg-slate-50 dark:hover:bg-slate-700">
+                      <tr key={`${movie.media_title}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-700">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">
                           #{index + 1}
                         </td>
@@ -336,7 +339,7 @@ export default function Analytics() {
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                     {analytics.top_shows?.map((show, index) => (
-                      <tr key={index} className="hover:bg-slate-50 dark:hover:bg-slate-700">
+                      <tr key={`${show.media_title}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-700">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">
                           #{index + 1}
                         </td>

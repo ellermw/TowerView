@@ -83,7 +83,7 @@ export default function Settings() {
   const [selectedTranscodeServers, setSelectedTranscodeServers] = useState<number[]>([])
 
   // Fetch available servers
-  const { data: servers = [] } = useQuery<Server[]>(
+  const { data: servers = [], isLoading: isLoadingServers } = useQuery<Server[]>(
     'admin-servers',
     () => api.get('/admin/servers').then(res => res.data)
   )
@@ -578,6 +578,7 @@ export default function Settings() {
                     </p>
                   </div>
                   <button
+                    type="button"
                     onClick={() => setTranscodeAutoTerminateEnabled(!transcodeAutoTerminateEnabled)}
                     className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${
                       transcodeAutoTerminateEnabled ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'
@@ -601,8 +602,10 @@ export default function Settings() {
                       Select which servers should have 4K transcode auto-termination enabled
                     </p>
                     <div className="space-y-2 max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg p-3">
-                      {servers.length === 0 ? (
-                        <p className="text-sm text-slate-500 dark:text-slate-400">No servers available</p>
+                      {isLoadingServers ? (
+                        <p className="text-sm text-slate-500 dark:text-slate-400">Loading servers...</p>
+                      ) : servers.length === 0 ? (
+                        <p className="text-sm text-slate-500 dark:text-slate-400">No servers configured</p>
                       ) : (
                         servers.map((server) => (
                           <label key={server.id} className="flex items-center space-x-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 p-2 rounded">
@@ -656,6 +659,7 @@ export default function Settings() {
                 {/* Save Button */}
                 <div className="flex justify-end">
                   <button
+                    type="button"
                     onClick={() => saveTranscodeSettings.mutate()}
                     disabled={saveTranscodeSettings.isLoading}
                     className="btn btn-primary"
@@ -801,150 +805,6 @@ export default function Settings() {
 
       {/* Sync & Cache Tab Content */}
       {activeTab === 'sync' && <SyncSettings />}
-
-      {/* Transcode Tab Content */}
-      {activeTab === 'transcode' && (
-        <div className="space-y-6">
-          <div className="card">
-            <div className="card-body">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
-                4K Transcode Auto-Termination
-              </h2>
-
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                Automatically terminate streams that are transcoding from 4K to 1080p or lower resolutions after a 5-second grace period.
-                This helps preserve server resources and encourages users to use direct play or lower quality versions.
-              </p>
-
-              <div className="space-y-6">
-                {/* Enable/Disable Toggle */}
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Enable Auto-Termination
-                    </label>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                      When enabled, 4K transcodes to 1080p or below will be automatically terminated
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setTranscodeAutoTerminateEnabled(!transcodeAutoTerminateEnabled)}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${
-                      transcodeAutoTerminateEnabled ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        transcodeAutoTerminateEnabled ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                {/* Server Selection */}
-                {transcodeAutoTerminateEnabled && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                      Apply to Servers
-                    </label>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
-                      Select which servers should have 4K transcode auto-termination enabled
-                    </p>
-                    <div className="space-y-2 max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg p-3">
-                      {servers.length === 0 ? (
-                        <p className="text-sm text-slate-500 dark:text-slate-400">No servers available</p>
-                      ) : (
-                        servers.map((server) => (
-                          <label key={server.id} className="flex items-center space-x-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 p-2 rounded">
-                            <input
-                              type="checkbox"
-                              checked={selectedTranscodeServers.includes(server.id)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedTranscodeServers([...selectedTranscodeServers, server.id])
-                                } else {
-                                  setSelectedTranscodeServers(selectedTranscodeServers.filter(id => id !== server.id))
-                                }
-                              }}
-                              className="w-4 h-4 text-blue-600 bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 rounded focus:ring-blue-500"
-                            />
-                            <span className="flex-1 text-sm text-slate-900 dark:text-white">
-                              {server.name}
-                              <span className="text-xs text-slate-500 dark:text-slate-400 ml-2">
-                                ({server.type})
-                              </span>
-                            </span>
-                          </label>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Termination Message */}
-                {transcodeAutoTerminateEnabled && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                      Termination Message (Plex Only)
-                    </label>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
-                      Message shown to Plex users when their 4K transcode is terminated
-                    </p>
-                    <textarea
-                      value={transcodeTerminationMessage}
-                      onChange={(e) => setTranscodeTerminationMessage(e.target.value)}
-                      rows={3}
-                      className="input w-full"
-                      placeholder="Enter the message to display to users..."
-                    />
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                      Note: Messages are only sent to Plex users. Jellyfin and Emby sessions are terminated without a message.
-                    </p>
-                  </div>
-                )}
-
-                {/* Save Button */}
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => saveTranscodeSettings.mutate()}
-                    disabled={saveTranscodeSettings.isLoading}
-                    className="btn btn-primary"
-                  >
-                    {saveTranscodeSettings.isLoading ? 'Saving...' : 'Save Settings'}
-                  </button>
-                </div>
-
-                {/* Info Box */}
-                {transcodeAutoTerminateEnabled && (
-                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                    <div className="flex">
-                      <div className="flex-shrink-0">
-                        <ExclamationTriangleIcon className="h-5 w-5 text-blue-400" />
-                      </div>
-                      <div className="ml-3">
-                        <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                          Auto-Termination Active
-                        </h3>
-                        <div className="mt-2 text-sm text-blue-700 dark:text-blue-300">
-                          <p>
-                            The system will monitor for 4K transcodes every 2 seconds. Any stream transcoding from 4K to 1080p
-                            or lower will be terminated after a 5-second grace period.
-                          </p>
-                          {selectedTranscodeServers.length > 0 && (
-                            <p className="mt-1">
-                              Applied to {selectedTranscodeServers.length} server{selectedTranscodeServers.length !== 1 ? 's' : ''}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
