@@ -41,7 +41,9 @@ class MediaAuthRequest(BaseModel):
 async def initiate_plex_oauth(request: Request):
     """Initiate Plex OAuth flow"""
     import os
+    import logging
 
+    logger = logging.getLogger(__name__)
     client_id = str(uuid.uuid4())
 
     # Get the frontend URL from environment variable or request headers
@@ -52,6 +54,7 @@ async def initiate_plex_oauth(request: Request):
         origin = request.headers.get("origin")
         if origin:
             frontend_url = origin
+            logger.info(f"Plex OAuth: Using Origin header for forwardUrl: {frontend_url}")
         else:
             # Try to get from Referer header
             referer = request.headers.get("referer")
@@ -60,9 +63,13 @@ async def initiate_plex_oauth(request: Request):
                 from urllib.parse import urlparse
                 parsed = urlparse(referer)
                 frontend_url = f"{parsed.scheme}://{parsed.netloc}"
+                logger.info(f"Plex OAuth: Using Referer header for forwardUrl: {frontend_url}")
             else:
                 # Fallback to localhost
                 frontend_url = "http://localhost:8080"
+                logger.warning(f"Plex OAuth: No Origin/Referer header found, falling back to localhost")
+    else:
+        logger.info(f"Plex OAuth: Using FRONTEND_URL environment variable: {frontend_url}")
 
     async with httpx.AsyncClient() as client:
         response = await client.post(

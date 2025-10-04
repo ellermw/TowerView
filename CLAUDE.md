@@ -430,10 +430,13 @@ Container IDs may have changed. System auto-syncs every 5 minutes, or manually s
 
 ### Plex OAuth Stuck on Loading Screen
 - **Cause**: OAuth redirect URL (forwardUrl) doesn't match your frontend URL
-- **Solution**: The backend now auto-detects the frontend URL from request headers
-- **Manual Override**: Set `FRONTEND_URL` environment variable (e.g., `FRONTEND_URL=https://towerview.yourdomain.com`)
-- **How it works**: Backend checks in order: `FRONTEND_URL` env var → `Origin` header → `Referer` header → falls back to `localhost:8080`
-- After setting environment variable, restart backend container
+- **Solution**: Auto-detection from request headers (works for all users accessing via their own domain)
+- **How it works**:
+  - Each user's browser automatically sends their access URL (e.g., `https://view.tower-server.com`) in request headers
+  - Backend extracts this from `Origin` or `Referer` header
+  - No configuration needed - works automatically for each user's domain
+- **Debug**: Check backend logs for "Plex OAuth: Using Origin header for forwardUrl" to verify detection
+- **Manual Override** (rarely needed): Set `FRONTEND_URL` environment variable only if auto-detection fails
 
 ### Bandwidth Graph Issues
 - Fixed in v2.3.6: Y-axis now properly scales to show all server bandwidth ranges
