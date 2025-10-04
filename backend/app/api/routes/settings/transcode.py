@@ -21,8 +21,8 @@ router = APIRouter(prefix="/transcode", tags=["settings"])
 class TranscodeSettings(BaseModel):
     """Model for transcode settings"""
     auto_terminate_4k_enabled: bool = Field(description="Enable automatic termination of 4K transcodes")
-    auto_terminate_message: str = Field(description="Message to display when terminating")
-    whitelist_usernames: List[str] = Field(default=[], description="Usernames excluded from auto-termination")
+    auto_terminate_message: str = Field(description="Message to display when terminating (Plex only)")
+    selected_server_ids: List[int] = Field(default=[], description="Server IDs to apply auto-termination to")
 
 
 class TranscodeSettingsResponse(TranscodeSettings):
@@ -42,7 +42,7 @@ async def get_transcode_settings(
     return TranscodeSettingsResponse(
         auto_terminate_4k_enabled=settings["enabled"],
         auto_terminate_message=settings["message"],
-        whitelist_usernames=settings["whitelist"]
+        selected_server_ids=settings["server_ids"]
     )
 
 
@@ -60,7 +60,7 @@ async def update_transcode_settings(
             db=db,
             enabled=settings.auto_terminate_4k_enabled,
             message=settings.auto_terminate_message,
-            whitelist=settings.whitelist_usernames,
+            server_ids=settings.selected_server_ids,
             updated_by_id=current_user.id
         )
 
@@ -73,7 +73,8 @@ async def update_transcode_settings(
             details={
                 "enabled": settings.auto_terminate_4k_enabled,
                 "message": settings.auto_terminate_message,
-                "whitelist_count": len(settings.whitelist_usernames)
+                "selected_servers": settings.selected_server_ids,
+                "server_count": len(settings.selected_server_ids)
             }
         )
         db.add(audit_log)

@@ -20,13 +20,15 @@ class TranscodeTerminationService:
     # Settings keys
     AUTO_TERMINATE_ENABLED = "4k_transcode_auto_terminate_enabled"
     AUTO_TERMINATE_MESSAGE = "4k_transcode_auto_terminate_message"
-    AUTO_TERMINATE_WHITELIST = "4k_transcode_auto_terminate_whitelist"  # List of usernames to exclude
+    AUTO_TERMINATE_SERVERS = "4k_transcode_auto_terminate_servers"  # List of server IDs to apply to
 
     # Default message
     DEFAULT_MESSAGE = "4K transcoding is not allowed. Please use a client that supports direct play or choose a lower quality version."
 
-    # Track recently terminated sessions to avoid duplicate terminations
-    _terminated_sessions: Dict[str, datetime] = {}
+    # Track session start times and terminated sessions
+    _session_start_times: Dict[str, datetime] = {}  # Track when we first saw a 4K transcode
+    _terminated_sessions: Dict[str, datetime] = {}  # Track terminated sessions to avoid duplicates
+    GRACE_PERIOD = timedelta(seconds=5)  # Allow 5 seconds before termination
     TERMINATION_COOLDOWN = timedelta(minutes=5)  # Don't re-terminate same user/title for 5 minutes
 
     @classmethod
@@ -34,16 +36,16 @@ class TranscodeTerminationService:
         """Get current auto-termination settings"""
         enabled_setting = db.query(SystemSettings).filter_by(key=cls.AUTO_TERMINATE_ENABLED).first()
         message_setting = db.query(SystemSettings).filter_by(key=cls.AUTO_TERMINATE_MESSAGE).first()
-        whitelist_setting = db.query(SystemSettings).filter_by(key=cls.AUTO_TERMINATE_WHITELIST).first()
+        servers_setting = db.query(SystemSettings).filter_by(key=cls.AUTO_TERMINATE_SERVERS).first()
 
         return {
             "enabled": enabled_setting.value if enabled_setting else False,
             "message": message_setting.value if message_setting else cls.DEFAULT_MESSAGE,
-            "whitelist": whitelist_setting.value if whitelist_setting else []
+            "server_ids": servers_setting.value if servers_setting else []
         }
 
     @classmethod
-    def update_settings(cls, db: Session, enabled: bool, message: str, whitelist: List[str], updated_by_id: int):
+    def update_settings(cls, db: Session, enabled: bool, message: str, server_ids: List[int], updated_by_id: int):
         """Update auto-termination settings"""
         # Update or create enabled setting
         enabled_setting = db.query(SystemSettings).filter_by(key=cls.AUTO_TERMINATE_ENABLED).first()
@@ -72,34 +74,34 @@ class TranscodeTerminationService:
                 key=cls.AUTO_TERMINATE_MESSAGE,
                 value=message,
                 category="transcode",
-                description="Message to display when terminating 4K transcodes",
+                description="Message to display when terminating 4K transcodes (Plex only)",
                 updated_by_id=updated_by_id
             )
             db.add(message_setting)
 
-        # Update or create whitelist setting
-        whitelist_setting = db.query(SystemSettings).filter_by(key=cls.AUTO_TERMINATE_WHITELIST).first()
-        if whitelist_setting:
-            whitelist_setting.value = whitelist
-            whitelist_setting.updated_at = datetime.utcnow()
-            whitelist_setting.updated_by_id = updated_by_id
+        # Update or create servers setting
+        servers_setting = db.query(SystemSettings).filter_by(key=cls.AUTO_TERMINATE_SERVERS).first()
+        if servers_setting:
+            servers_setting.value = server_ids
+            servers_setting.updated_at = datetime.utcnow()
+            servers_setting.updated_by_id = updated_by_id
         else:
-            whitelist_setting = SystemSettings(
-                key=cls.AUTO_TERMINATE_WHITELIST,
-                value=whitelist,
+            servers_setting = SystemSettings(
+                key=cls.AUTO_TERMINATE_SERVERS,
+                value=server_ids,
                 category="transcode",
-                description="List of usernames excluded from auto-termination",
+                description="List of server IDs to apply auto-termination to",
                 updated_by_id=updated_by_id
             )
-            db.add(whitelist_setting)
+            db.add(servers_setting)
 
         db.commit()
-        logger.info(f"4K transcode auto-termination settings updated: enabled={enabled}")
+        logger.info(f"4K transcode auto-termination settings updated: enabled={enabled}, servers={server_ids}")
 
     @classmethod
     async def check_and_terminate_4k_transcodes(cls, sessions: List[Dict[str, Any]], db: Session) -> int:
         """
-        Check sessions and terminate any 4K transcodes to 1080p or below
+        Check sessions and terminate any 4K transcodes to 1080p or below after 5-second grace period
         Returns the number of terminated sessions
         """
         settings = cls.get_settings(db)
@@ -111,25 +113,48 @@ class TranscodeTerminationService:
         terminated_count = 0
         now = datetime.utcnow()
 
-        # Clean up old terminated session records
+        # Clean up old records
         cls._terminated_sessions = {
             k: v for k, v in cls._terminated_sessions.items()
             if now - v < cls.TERMINATION_COOLDOWN
         }
 
+        # Clean up old session start times (remove sessions that are no longer active)
+        active_session_keys = {f"{s.get('server_id')}_{s.get('session_id')}" for s in sessions}
+        cls._session_start_times = {
+            k: v for k, v in cls._session_start_times.items()
+            if k in active_session_keys
+        }
+
         for session in sessions:
+            # Skip if server is not in the enabled list
+            server_id = session.get("server_id")
+            if server_id not in settings["server_ids"]:
+                continue
+
             # Check if this is a 4K to 1080p or below transcode
             if not cls._is_4k_downscale_transcode(session):
                 continue
 
-            # Check if user is whitelisted
-            username = session.get("username", "")
-            if username in settings["whitelist"]:
-                logger.debug(f"User {username} is whitelisted, skipping termination")
+            # Create session tracking key
+            session_track_key = f"{server_id}_{session.get('session_id')}"
+
+            # Track when we first saw this 4K transcode
+            if session_track_key not in cls._session_start_times:
+                cls._session_start_times[session_track_key] = now
+                logger.debug(f"Started tracking 4K transcode session {session_track_key}")
+                continue  # Don't terminate yet, start grace period
+
+            # Check if grace period has passed
+            session_start = cls._session_start_times[session_track_key]
+            if now - session_start < cls.GRACE_PERIOD:
+                remaining = (cls.GRACE_PERIOD - (now - session_start)).total_seconds()
+                logger.debug(f"Session {session_track_key} in grace period, {remaining:.1f}s remaining")
                 continue
 
-            # Check if we recently terminated this session
-            session_key = f"{session.get('server_id')}_{username}_{session.get('title')}"
+            # Check if we recently terminated this session (user/title combination)
+            username = session.get("username", "")
+            session_key = f"{server_id}_{username}_{session.get('title')}"
             if session_key in cls._terminated_sessions:
                 logger.debug(f"Recently terminated session for {username}, skipping")
                 continue
@@ -151,14 +176,20 @@ class TranscodeTerminationService:
                     server_id=server.id
                 )
 
+                # Only send message for Plex servers
+                termination_message = settings["message"] if server.server_type == "plex" else None
+
                 success = await provider.terminate_session(
                     session_id=session["session_id"],
-                    message=settings["message"]
+                    message=termination_message
                 )
 
                 if success:
                     terminated_count += 1
                     cls._terminated_sessions[session_key] = now
+
+                    # Remove from tracking
+                    del cls._session_start_times[session_track_key]
 
                     # Log the termination
                     audit_log = AuditLog(
@@ -167,14 +198,16 @@ class TranscodeTerminationService:
                         target_type="session",
                         target_id=session["session_id"],
                         details={
-                            "reason": "4K transcode auto-termination",
+                            "reason": "4K transcode auto-termination (5-second grace period exceeded)",
                             "server_id": server.id,
                             "server_name": server.name,
+                            "server_type": server.server_type,
                             "username": username,
                             "title": session.get("title"),
                             "original_resolution": session.get("original_resolution"),
                             "stream_resolution": session.get("stream_resolution"),
-                            "message_sent": settings["message"]
+                            "grace_period_seconds": cls.GRACE_PERIOD.total_seconds(),
+                            "message_sent": termination_message if termination_message else "No message (non-Plex server)"
                         },
                         ip_address="system",
                         user_agent="TranscodeTerminationService"
