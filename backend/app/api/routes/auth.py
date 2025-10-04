@@ -38,9 +38,31 @@ class MediaAuthRequest(BaseModel):
 
 
 @router.post("/media/oauth/plex/init")
-async def initiate_plex_oauth():
+async def initiate_plex_oauth(request: Request):
     """Initiate Plex OAuth flow"""
+    import os
+
     client_id = str(uuid.uuid4())
+
+    # Get the frontend URL from environment variable or request headers
+    frontend_url = os.getenv("FRONTEND_URL")
+
+    if not frontend_url:
+        # Try to get from Origin header
+        origin = request.headers.get("origin")
+        if origin:
+            frontend_url = origin
+        else:
+            # Try to get from Referer header
+            referer = request.headers.get("referer")
+            if referer:
+                # Extract the origin from referer
+                from urllib.parse import urlparse
+                parsed = urlparse(referer)
+                frontend_url = f"{parsed.scheme}://{parsed.netloc}"
+            else:
+                # Fallback to localhost
+                frontend_url = "http://localhost:8080"
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -67,7 +89,7 @@ async def initiate_plex_oauth():
 
         # Create the auth URL - use the correct OAuth format without hash
         # The forwardUrl parameter helps Plex know this is an OAuth flow
-        auth_app_url = f"https://app.plex.tv/auth?clientID={client_id}&code={data['code']}&context%5Bdevice%5D%5Bproduct%5D=TowerView&forwardUrl=http://localhost:8080"
+        auth_app_url = f"https://app.plex.tv/auth?clientID={client_id}&code={data['code']}&context%5Bdevice%5D%5Bproduct%5D=TowerView&forwardUrl={frontend_url}"
 
         return PlexOAuthInitResponse(
             pin_id=str(data["id"]),

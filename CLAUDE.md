@@ -147,6 +147,7 @@ All cache services start on application startup via the FastAPI `lifespan` conte
   - Staff authentication for TowerView users
   - Media user authentication (Plex OAuth, Emby/Jellyfin direct)
 - **Permission system**: Granular per-server permissions for Staff users stored in `UserPermission` model
+- **Plex OAuth**: Dynamically detects frontend URL from request headers (Origin/Referer) or `FRONTEND_URL` environment variable for proper OAuth redirects
 
 ### Background Tasks
 
@@ -426,6 +427,13 @@ Container IDs may have changed. System auto-syncs every 5 minutes, or manually s
 - Check Plex Pass subscription for termination features
 - Verify token has admin permissions
 - Local sessions may not be terminable remotely
+
+### Plex OAuth Stuck on Loading Screen
+- **Cause**: OAuth redirect URL (forwardUrl) doesn't match your frontend URL
+- **Solution**: The backend now auto-detects the frontend URL from request headers
+- **Manual Override**: Set `FRONTEND_URL` environment variable (e.g., `FRONTEND_URL=https://towerview.yourdomain.com`)
+- **How it works**: Backend checks in order: `FRONTEND_URL` env var → `Origin` header → `Referer` header → falls back to `localhost:8080`
+- After setting environment variable, restart backend container
 
 ### Bandwidth Graph Issues
 - Fixed in v2.3.6: Y-axis now properly scales to show all server bandwidth ranges
