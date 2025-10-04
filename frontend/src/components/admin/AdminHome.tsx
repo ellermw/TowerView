@@ -725,10 +725,12 @@ export default function AdminHome() {
 
     return (
       <div>
-        {/* Graph Container */}
-        <div className="relative h-28 bg-slate-50 dark:bg-slate-800 rounded-lg p-2 mb-2">
-          <div className="absolute inset-2 pr-20"> {/* Leave more space for Y-axis labels on right */}
-            <svg className="w-full h-full" viewBox="0 0 400 100" preserveAspectRatio="xMidYMid meet">
+        {/* Graph Container with Y-axis labels */}
+        <div className="relative h-32 flex mb-2">
+          {/* Graph area */}
+          <div className="flex-1 bg-slate-50 dark:bg-slate-800 rounded-lg p-2 relative">
+            <div className="absolute inset-2">
+            <svg className="w-full h-full" viewBox="0 0 800 100" preserveAspectRatio="none">
               {/* Grid lines */}
               <defs>
                 <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
@@ -745,7 +747,7 @@ export default function AdminHome() {
                     key={index}
                     x1="0"
                     y1={y}
-                    x2="390"
+                    x2="800"
                     y2={y}
                     stroke="currentColor"
                     strokeWidth="0.5"
@@ -758,7 +760,7 @@ export default function AdminHome() {
 
               {/* Time interval markers - every 5 seconds (18 points total for 90 seconds) */}
               {[...Array(18)].map((_, index) => {
-                const x = (index / 17) * 390  // 18 points, 0-17 index
+                const x = (index / 17) * 800  // 18 points, 0-17 index, scaled to full 800 width
                 const isMajor = index % 3 === 0  // Major marker every 15 seconds (every 3rd point)
                 return (
                   <line
@@ -779,8 +781,8 @@ export default function AdminHome() {
               {Object.keys(serverColors).map((serverName, serverIndex) => {
                 // Build path data for this server
                 const pathData = bandwidthHistory.map((point, index) => {
-                  // Use proper x scaling for 400-width viewBox
-                  const x = bandwidthHistory.length === 1 ? 200 : (index / (bandwidthHistory.length - 1)) * 390
+                  // Use proper x scaling for 800-width viewBox (full width)
+                  const x = bandwidthHistory.length === 1 ? 400 : (index / (bandwidthHistory.length - 1)) * 800
                   const servers = point.serverBandwidths || point.server_bandwidths || {}
                   const bandwidth = servers[serverName] || 0
                   const range = adjustedMaxBandwidth - adjustedMinBandwidth
@@ -834,12 +836,13 @@ export default function AdminHome() {
                 )
               })}
             </svg>
+            </div>
           </div>
 
-          {/* Y-axis labels on the right */}
-          <div className="absolute right-2 top-2 bottom-2 flex flex-col justify-between text-xs text-slate-500 dark:text-slate-400">
+          {/* Y-axis labels column on the right */}
+          <div className="w-20 flex flex-col justify-between py-2 pl-1 text-xs text-slate-500 dark:text-slate-400">
             {bandwidthIntervals.map((bandwidth, index) => (
-              <span key={index} className="leading-none">
+              <span key={index} className="leading-none text-right whitespace-nowrap">
                 {formatBitrate(bandwidth)}
               </span>
             ))}
@@ -847,8 +850,8 @@ export default function AdminHome() {
         </div>
 
         {/* Time labels below graph - show time ago */}
-        <div className="relative h-4 mb-2">
-          <div className="absolute inset-x-2 text-xs text-slate-500 dark:text-slate-400">
+        <div className="relative h-4 mb-2 flex">
+          <div className="flex-1 px-2 relative text-xs text-slate-500 dark:text-slate-400">
             {/* Fixed time labels every 15 seconds */}
             <span className="absolute transform -translate-x-1/2" style={{ left: '0%' }}>
               1:30
@@ -872,6 +875,7 @@ export default function AdminHome() {
               Current
             </span>
           </div>
+          <div className="w-20"></div> {/* Spacer to match Y-axis column */}
         </div>
 
         {/* Legend below graph */}

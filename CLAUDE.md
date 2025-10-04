@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TowerView is a unified media server management platform that provides a single administrative interface for managing multiple media servers (Plex, Jellyfin, Emby). It includes real-time monitoring, user management, session control, analytics, and Docker container management via Portainer integration.
 
-**Current Version:** 2.3.6
+**Current Version:** 2.3.8
 
 ## Architecture
 
@@ -135,7 +135,7 @@ Multiple cache layers for performance:
 1. **Sessions Cache** (`sessions_cache_service.py`): Updates every 2s, cached for 5s
 2. **Users Cache** (`users_cache_service.py`): Updates every 60s, cached for 2min
 3. **Metrics Cache** (`metrics_cache_service.py`): Background collection for instant dashboard loads
-4. **Bandwidth Cache** (`bandwidth_cache.py`): Real-time bandwidth tracking with historical storage
+4. **Bandwidth Cache** (`bandwidth_cache.py`): Real-time bandwidth tracking with 90-second history (18 data points at 5-second intervals)
 
 All cache services start on application startup via the FastAPI `lifespan` context manager in `backend/app/main.py`.
 
