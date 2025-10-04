@@ -296,6 +296,26 @@ async def get_session_counts(
     return session_counts
 
 
+@router.get("/sessions/bandwidth-history")
+async def get_bandwidth_history(
+    current_user: User = Depends(get_current_admin_or_local_user),
+    db: Session = Depends(get_db)
+):
+    """Get bandwidth history for the last 90 seconds"""
+    from ....services.bandwidth_cache import get_bandwidth_history as get_cache
+
+    # Get the bandwidth history from cache
+    history_data = await get_cache()
+
+    return {
+        "history": history_data.get("history", []),
+        "stats": history_data.get("stats", {}),
+        "cache_size": history_data.get("cache_size", 0),
+        "max_points": history_data.get("max_points", 18),
+        "interval_seconds": 5
+    }
+
+
 async def track_session_analytics(db: Session, server_id: int, session: dict):
     """Track analytics for active sessions (helper function)"""
     try:

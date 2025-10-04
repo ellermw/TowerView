@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-**Version 2.3.6 - Staff Permissions & Bandwidth Graph Fixes**
+**Version 2.3.7 - Enhanced Bandwidth Monitoring & Graph Improvements**
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -47,7 +47,8 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 
 ### Analytics & Monitoring
 
-- **Real-time bandwidth monitoring** with 24-hour historical graphs
+- **Real-time bandwidth monitoring** with 90-second historical view (5-second intervals)
+- **Server-side bandwidth caching** for immediate history on dashboard load
 - **Server resource utilization** (CPU, RAM, GPU)
 - **Transcoding statistics** (hardware vs software detection)
 - **Active session tracking** with detailed user information

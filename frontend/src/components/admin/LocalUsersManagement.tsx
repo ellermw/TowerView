@@ -63,7 +63,7 @@ export default function LocalUsersManagement() {
     password: '',
     confirmPassword: '',
     must_change_password: false,
-    role: 'support' as string
+    role: 'support' as string  // Always default to support role
   })
 
   // Get current user to determine permissions
@@ -308,9 +308,16 @@ export default function LocalUsersManagement() {
     return USER_ROLES.find(r => r.value === type)?.label || type
   }
 
-  const canCreateUser = currentUser?.type === 'admin' || currentUser?.type === 'staff' || currentUser?.type === 'local_user'
-  const canDeleteUser = currentUser?.type === 'admin'
-  const canChangeRole = currentUser?.type === 'admin'
+  // Permission logic based on user role
+  const isSupport = currentUser?.type === 'support'
+  const isStaff = currentUser?.type === 'staff' || currentUser?.type === 'local_user'
+  const isAdmin = currentUser?.type === 'admin'
+
+  const canCreateUser = isAdmin || isStaff  // Admin and Staff can create users
+  const canDeleteUser = isAdmin  // Only Admin can delete users
+  const canChangeRole = isAdmin  // Only Admin can change roles
+  const canEditUser = isAdmin || isStaff  // Admin and Staff can edit users
+  const canManagePermissions = isAdmin || isStaff  // Admin and Staff can manage permissions
 
   const hasPermissionForServer = (serverId: number) => {
     return localPermissions.some(p => p.server_id === serverId)
@@ -495,20 +502,24 @@ export default function LocalUsersManagement() {
                         {new Date(user.created_at).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => user.type !== 'admin' ? openPermissionsModal(user) : null}
-                          className={`mr-4 ${user.type !== 'admin' ? 'text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300' : 'text-gray-400 cursor-not-allowed'}`}
-                          title={user.type === 'admin' ? 'Admins have all permissions' : 'Manage permissions'}
-                          disabled={user.type === 'admin'}
-                        >
-                          <ShieldCheckIcon className="h-5 w-5" />
-                        </button>
-                        <button
-                          onClick={() => openEditModal(user)}
-                          className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 mr-4"
-                        >
-                          <PencilIcon className="h-5 w-5" />
-                        </button>
+                        {canManagePermissions && (
+                          <button
+                            onClick={() => user.type !== 'admin' ? openPermissionsModal(user) : null}
+                            className={`mr-4 ${user.type !== 'admin' ? 'text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300' : 'text-gray-400 cursor-not-allowed'}`}
+                            title={user.type === 'admin' ? 'Admins have all permissions' : 'Manage permissions'}
+                            disabled={user.type === 'admin'}
+                          >
+                            <ShieldCheckIcon className="h-5 w-5" />
+                          </button>
+                        )}
+                        {canEditUser && (
+                          <button
+                            onClick={() => openEditModal(user)}
+                            className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 mr-4"
+                          >
+                            <PencilIcon className="h-5 w-5" />
+                          </button>
+                        )}
                         {(canDeleteUser && user.id !== currentUser?.id) && (
                           <button
                             onClick={() => handleDeleteUser(user)}
@@ -517,6 +528,9 @@ export default function LocalUsersManagement() {
                           >
                             <TrashIcon className="h-5 w-5" />
                           </button>
+                        )}
+                        {!canEditUser && !canDeleteUser && !canManagePermissions && (
+                          <span className="text-sm text-slate-400 dark:text-slate-500">View only</span>
                         )}
                       </td>
                     </tr>
@@ -592,7 +606,7 @@ export default function LocalUsersManagement() {
                   Must change password on first login
                 </label>
               </div>
-              {currentUser?.type === 'admin' && (
+              {(isAdmin || isStaff) && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                     Role
@@ -602,11 +616,19 @@ export default function LocalUsersManagement() {
                     onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                     className="mt-1 block w-full border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-slate-700 dark:text-white"
                   >
-                    {USER_ROLES.map(role => (
-                      <option key={role.value} value={role.value}>
-                        {role.label} - {role.description}
-                      </option>
-                    ))}
+                    {USER_ROLES
+                      .filter(role => {
+                        // Admin can create any role
+                        if (isAdmin) return true
+                        // Staff can only create Support users
+                        return role.value === 'support'
+                      })
+                      .map(role => (
+                        <option key={role.value} value={role.value}>
+                          {role.label} - {role.description}
+                        </option>
+                      ))
+                    }
                   </select>
                 </div>
               )}

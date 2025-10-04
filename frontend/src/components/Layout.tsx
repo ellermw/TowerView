@@ -66,8 +66,9 @@ export default function Layout({ children }: LayoutProps) {
         management.push({ name: 'Users', href: '/admin/users' })
       }
 
-      // System Users (formerly Local Users) - admin only or if user can manage users
-      if (isAdmin || hasPermission('manage_users')) {
+      // System Users - all system users can view (admin, staff, support)
+      // Media users cannot see this page
+      if (isAdmin || isLocalUser) {
         management.push({ name: 'System Users', href: '/admin/local-users' })
       }
 

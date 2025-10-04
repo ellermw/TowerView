@@ -9,8 +9,8 @@ from collections import deque
 
 logger = logging.getLogger(__name__)
 
-# Global bandwidth history cache
-bandwidth_history: deque = deque(maxlen=150)  # Keep last 150 data points (5 minutes at 2-second intervals)
+# Global bandwidth history cache - 18 points at 5-second intervals = 90 seconds
+bandwidth_history: deque = deque(maxlen=18)  # Keep last 18 data points (90 seconds at 5-second intervals)
 cache_lock = asyncio.Lock()
 
 # Global reference to background task
@@ -76,7 +76,7 @@ async def get_bandwidth_history() -> Dict[str, Any]:
             'history': history_list,
             'stats': current_stats,
             'cache_size': len(history_list),
-            'max_points': 150
+            'max_points': 18
         }
 
 
@@ -89,27 +89,29 @@ async def start_bandwidth_tracking(initial_db):
         return
 
     async def track_bandwidth_loop():
-        """Background task to track bandwidth every 2 seconds"""
+        """Background task to track bandwidth every 5 seconds"""
         logger.info("Started bandwidth tracking background task")
+
+        # Import here to avoid circular imports
+        from ..services.sessions_cache_service import sessions_cache_service
 
         while True:
             try:
-                # For now, just track empty bandwidth data
-                # The actual sessions will be fetched from the /admin/sessions endpoint
-                sessions = []
+                # Get sessions from the cache service
+                sessions = sessions_cache_service.sessions_cache if sessions_cache_service.sessions_cache else []
 
-                # Track bandwidth point (will be empty for now)
+                # Track bandwidth point
                 await track_bandwidth_point(sessions)
 
-                # Wait 2 seconds before next update
-                await asyncio.sleep(2)
+                # Wait 5 seconds before next update
+                await asyncio.sleep(5)
 
             except Exception as e:
                 logger.error(f"Error in bandwidth tracking loop: {e}")
-                await asyncio.sleep(2)  # Continue after error
+                await asyncio.sleep(5)  # Continue after error
 
     background_task = asyncio.create_task(track_bandwidth_loop())
-    logger.info("Bandwidth tracking task created")
+    logger.info("Bandwidth tracking task created (5-second intervals)")
 
 
 def stop_bandwidth_tracking():

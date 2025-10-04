@@ -208,8 +208,12 @@ async def create_local_user(
             # Default to staff for backward compatibility
             new_user_type = UserType.staff
     elif current_user.type in [UserType.staff, UserType.local_user]:
-        # Staff can only create support users
+        # Staff can only create support users (ignore any role parameter)
         new_user_type = UserType.support
+        # Even if they try to pass a different role, force it to support
+        if hasattr(user_data, 'role') and user_data.role != 'support':
+            logger.warning(f"Staff user {current_user.username} tried to create {user_data.role} user, forcing to support")
+            user_data.role = 'support'
 
     # Create new user
     new_user = User(
@@ -258,19 +262,26 @@ async def update_local_user(
     user_id: int,
     user_data: LocalUserUpdate,
     request: Request,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_or_local_user),  # Allow Staff to edit users
     db: Session = Depends(get_db)
 ):
     """Update a local user"""
     user = db.query(User).filter(
         User.id == user_id,
-        User.type == UserType.local_user
+        User.type.in_([UserType.admin, UserType.staff, UserType.support, UserType.local_user])
     ).first()
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
+        )
+
+    # Staff cannot edit admin users
+    if current_user.type in [UserType.staff, UserType.local_user] and user.type == UserType.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Staff cannot edit admin users"
         )
 
     # Track changes for audit log
@@ -433,14 +444,14 @@ async def get_user_permissions(
 async def grant_user_permission(
     user_id: int,
     permission_data: UserPermissionSchema,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_or_local_user),  # Allow Staff to manage permissions
     db: Session = Depends(get_db)
 ):
-    """Grant permissions to a local user for a server"""
-    # Check if user exists and is a local user
+    """Grant permissions to a local user for a server (Admin and Staff only)"""
+    # Check if user exists and is a system user (staff/support)
     user = db.query(User).filter(
         User.id == user_id,
-        User.type == UserType.local_user
+        User.type.in_([UserType.staff, UserType.support, UserType.local_user])
     ).first()
 
     if not user:
@@ -492,7 +503,7 @@ async def update_user_permission(
     user_id: int,
     server_id: int,
     permission_data: UserPermissionUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_or_local_user),  # Allow Staff to manage permissions
     db: Session = Depends(get_db)
 ):
     """Update user permissions for a server"""
@@ -529,7 +540,7 @@ async def update_user_permission(
 async def revoke_user_permission(
     user_id: int,
     server_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_or_local_user),  # Allow Staff to manage permissions
     db: Session = Depends(get_db)
 ):
     """Revoke user permissions for a server"""

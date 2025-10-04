@@ -158,9 +158,11 @@ interface DashboardAnalytics {
 }
 
 interface BandwidthDataPoint {
-  timestamp: number
-  totalBandwidth: number
-  serverBandwidths: Record<string, number>
+  timestamp: string | number  // Can be ISO string from server or number from client
+  totalBandwidth: number | undefined
+  total_bandwidth?: number  // Server uses snake_case
+  serverBandwidths: Record<string, number> | undefined
+  server_bandwidths?: Record<string, number>  // Server uses snake_case
 }
 
 interface GPUStatus {
@@ -205,6 +207,28 @@ export default function AdminHome() {
     server_id: undefined as number | undefined,
     days_back: 7
   })
+
+  // Fetch bandwidth history from server (90 seconds of cached data at 5-second intervals)
+  const { data: serverBandwidthHistory } = useQuery(
+    'bandwidth-history',
+    () => api.get('/admin/sessions/bandwidth-history').then(res => res.data),
+    {
+      refetchInterval: 5000, // Refetch every 5 seconds to match server collection interval
+      refetchOnWindowFocus: false,
+      onSuccess: (data) => {
+        // Convert server format to client format
+        const history = data.history?.map((point: any) => ({
+          timestamp: typeof point.timestamp === 'string' ? new Date(point.timestamp).getTime() : point.timestamp,
+          totalBandwidth: point.total_bandwidth || 0,
+          serverBandwidths: point.server_bandwidths || {}
+        })) || []
+
+        if (history.length > 0) {
+          setBandwidthHistory(history)
+        }
+      }
+    }
+  )
 
   // Get active sessions with 1-second refresh for live bandwidth updates
   const { data: sessions = [], isLoading: sessionsLoading, refetch: refetchSessions, error: sessionsError } = useQuery<LiveSession[]>(
@@ -311,65 +335,8 @@ export default function AdminHome() {
     sessionsRef.current = sessions || []
   }, [sessions])
 
-  // Track bandwidth data every 2 seconds
-  React.useEffect(() => {
-    const trackBandwidth = () => {
-      const now = Date.now()
-      const fiveMinutesAgo = now - 5 * 60 * 1000
-
-      // Calculate total bandwidth and per-server bandwidth
-      let totalBandwidth = 0
-      const serverBandwidths: Record<string, number> = {}
-
-      const currentSessions = sessionsRef.current
-
-      // Debug: Log session data to understand bandwidth distribution
-      if (currentSessions && Array.isArray(currentSessions)) {
-        console.log('Current sessions for bandwidth calculation:', currentSessions.map(s => ({
-          server: s.server_name,
-          bandwidth: s.session_bandwidth,
-          user: s.username,
-          title: s.title
-        })))
-      }
-
-      if (currentSessions && Array.isArray(currentSessions) && currentSessions.length > 0) {
-        currentSessions.forEach(session => {
-          const bandwidth = session.session_bandwidth ?
-            (typeof session.session_bandwidth === 'string' ?
-              parseInt(session.session_bandwidth) : session.session_bandwidth) : 0
-
-          totalBandwidth += bandwidth
-
-          const serverKey = session.server_name || `Server ${session.server_id || 'Unknown'}`
-          serverBandwidths[serverKey] = (serverBandwidths[serverKey] || 0) + bandwidth
-        })
-
-        // Debug: Log calculated server bandwidths
-        console.log('Calculated server bandwidths:', serverBandwidths)
-        console.log('Total bandwidth:', totalBandwidth)
-      } else {
-        console.log('No sessions found or sessions is not an array')
-      }
-
-      setBandwidthHistory(prev => {
-        const newHistory = [...prev, {
-          timestamp: now,
-          totalBandwidth,
-          serverBandwidths
-        }]
-
-        // Keep only last 5 minutes of data (20 points at 15-second intervals)
-        return newHistory.filter(point => point.timestamp > fiveMinutesAgo).slice(-20)
-      })
-    }
-
-    // Track immediately, then every 2 seconds
-    trackBandwidth()
-    const interval = setInterval(trackBandwidth, 2000)
-
-    return () => clearInterval(interval)
-  }, []) // Empty dependency array - only run once
+  // Client-side bandwidth tracking removed - now using server-side cache
+  // Server tracks bandwidth every 5 seconds and keeps 90 seconds of history (18 data points)
 
   // Generate server colors
   const getServerColors = () => {
@@ -390,7 +357,8 @@ export default function AdminHome() {
 
     const serverNames = new Set<string>()
     bandwidthHistory.forEach(point => {
-      Object.keys(point.serverBandwidths).forEach(server => serverNames.add(server))
+      const servers = point.serverBandwidths || point.server_bandwidths || {}
+      Object.keys(servers).forEach(server => serverNames.add(server))
     })
 
     // Debug: Log server names found
@@ -686,7 +654,8 @@ export default function AdminHome() {
     const allServerBandwidths: number[] = []
 
     bandwidthHistory.forEach(point => {
-      Object.entries(point.serverBandwidths || {}).forEach(([serverName, bandwidth]) => {
+      const servers = point.serverBandwidths || point.server_bandwidths || {}
+      Object.entries(servers).forEach(([serverName, bandwidth]) => {
         // Make sure we're not accidentally including a "total" entry
         if (serverName.toLowerCase() !== 'total' && bandwidth > 0) {
           allServerBandwidths.push(bandwidth)
@@ -725,8 +694,8 @@ export default function AdminHome() {
 
     // If we have no server data, try to estimate from total
     if (allServerBandwidths.length === 0 && bandwidthHistory.length > 0) {
-      const latestTotal = bandwidthHistory[bandwidthHistory.length - 1].totalBandwidth
-      if (latestTotal > 0) {
+      const latestTotal = bandwidthHistory[bandwidthHistory.length - 1].totalBandwidth || bandwidthHistory[bandwidthHistory.length - 1].total_bandwidth
+      if (latestTotal && latestTotal > 0) {
         // No individual server data but have total - estimate max as half of total
         // (assuming at least 2 servers sharing the load)
         const estimatedServerMax = latestTotal / 2
@@ -735,8 +704,8 @@ export default function AdminHome() {
       }
     }
 
-    const formatTimestamp = (timestamp: number) => {
-      const date = new Date(timestamp)
+    const formatTimestamp = (timestamp: string | number) => {
+      const date = typeof timestamp === 'string' ? new Date(timestamp) : new Date(timestamp)
       return date.toLocaleTimeString('en-US', {
         hour12: false,
         minute: '2-digit',
@@ -758,8 +727,8 @@ export default function AdminHome() {
       <div>
         {/* Graph Container */}
         <div className="relative h-28 bg-slate-50 dark:bg-slate-800 rounded-lg p-2 mb-2">
-          <div className="absolute inset-2 pr-16"> {/* Leave space for Y-axis labels on right */}
-            <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <div className="absolute inset-2 pr-20"> {/* Leave more space for Y-axis labels on right */}
+            <svg className="w-full h-full" viewBox="0 0 400 100" preserveAspectRatio="xMidYMid meet">
               {/* Grid lines */}
               <defs>
                 <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
@@ -776,43 +745,44 @@ export default function AdminHome() {
                     key={index}
                     x1="0"
                     y1={y}
-                    x2="100"
+                    x2="390"
                     y2={y}
                     stroke="currentColor"
-                    strokeWidth="0.3"
-                    strokeDasharray="2,2"
+                    strokeWidth="0.5"
+                    strokeDasharray="4,4"
                     className="text-slate-400 dark:text-slate-500"
                     opacity="0.5"
                   />
                 )
               })}
 
-              {/* Time interval markers */}
-              {bandwidthHistory.map((point, index) => {
-                if (index % 4 === 0 || index === bandwidthHistory.length - 1) { // Show every 4th marker (1 minute intervals)
-                  const x = bandwidthHistory.length === 1 ? 50 : (index / (bandwidthHistory.length - 1)) * 100
-                  return (
-                    <line
-                      key={index}
-                      x1={x}
-                      y1="90"
-                      x2={x}
-                      y2="95"
-                      stroke="currentColor"
-                      strokeWidth="0.5"
-                      className="text-slate-400 dark:text-slate-500"
-                    />
-                  )
-                }
-                return null
+              {/* Time interval markers - every 5 seconds (18 points total for 90 seconds) */}
+              {[...Array(18)].map((_, index) => {
+                const x = (index / 17) * 390  // 18 points, 0-17 index
+                const isMajor = index % 3 === 0  // Major marker every 15 seconds (every 3rd point)
+                return (
+                  <line
+                    key={index}
+                    x1={x}
+                    y1={isMajor ? "88" : "92"}
+                    x2={x}
+                    y2="95"
+                    stroke="currentColor"
+                    strokeWidth={isMajor ? "0.8" : "0.4"}
+                    className="text-slate-400 dark:text-slate-500"
+                    opacity={isMajor ? "0.7" : "0.4"}
+                  />
+                )
               })}
 
               {/* Individual server lines - render each as a separate group */}
               {Object.keys(serverColors).map((serverName, serverIndex) => {
                 // Build path data for this server
                 const pathData = bandwidthHistory.map((point, index) => {
-                  const x = bandwidthHistory.length === 1 ? 50 : (index / (bandwidthHistory.length - 1)) * 100
-                  const bandwidth = point.serverBandwidths[serverName] || 0
+                  // Use proper x scaling for 400-width viewBox
+                  const x = bandwidthHistory.length === 1 ? 200 : (index / (bandwidthHistory.length - 1)) * 390
+                  const servers = point.serverBandwidths || point.server_bandwidths || {}
+                  const bandwidth = servers[serverName] || 0
                   const range = adjustedMaxBandwidth - adjustedMinBandwidth
                   const y = range > 0 ? 95 - ((bandwidth - adjustedMinBandwidth) / range) * 85 : 50
                   return { x, y, bandwidth }
@@ -842,7 +812,7 @@ export default function AdminHome() {
                       d={pathString}
                       fill="none"
                       stroke={serverColors[serverName]}
-                      strokeWidth="2"
+                      strokeWidth="1.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       opacity="0.9"
@@ -854,7 +824,7 @@ export default function AdminHome() {
                           key={`dot-${pointIndex}`}
                           cx={point.x}
                           cy={point.y}
-                          r="1.5"
+                          r="2"
                           fill={serverColors[serverName]}
                           opacity="1"
                         />
@@ -876,24 +846,31 @@ export default function AdminHome() {
           </div>
         </div>
 
-        {/* Time labels below graph */}
+        {/* Time labels below graph - show time ago */}
         <div className="relative h-4 mb-2">
-          <div className="absolute inset-x-2 flex justify-between text-xs text-slate-500 dark:text-slate-400">
-            {bandwidthHistory.map((point, index) => {
-              if (index % 4 === 0 || index === bandwidthHistory.length - 1) { // Show every 4th label
-                const position = bandwidthHistory.length === 1 ? 50 : (index / (bandwidthHistory.length - 1)) * 100
-                return (
-                  <span
-                    key={index}
-                    className="absolute transform -translate-x-1/2"
-                    style={{ left: `${position}%` }}
-                  >
-                    {formatTimestamp(point.timestamp)}
-                  </span>
-                )
-              }
-              return null
-            })}
+          <div className="absolute inset-x-2 text-xs text-slate-500 dark:text-slate-400">
+            {/* Fixed time labels every 15 seconds */}
+            <span className="absolute transform -translate-x-1/2" style={{ left: '0%' }}>
+              1:30
+            </span>
+            <span className="absolute transform -translate-x-1/2" style={{ left: '16.67%' }}>
+              1:15
+            </span>
+            <span className="absolute transform -translate-x-1/2" style={{ left: '33.33%' }}>
+              1:00
+            </span>
+            <span className="absolute transform -translate-x-1/2" style={{ left: '50%' }}>
+              0:45
+            </span>
+            <span className="absolute transform -translate-x-1/2" style={{ left: '66.67%' }}>
+              0:30
+            </span>
+            <span className="absolute transform -translate-x-1/2" style={{ left: '83.33%' }}>
+              0:15
+            </span>
+            <span className="absolute transform -translate-x-1/2" style={{ left: '100%' }}>
+              Current
+            </span>
           </div>
         </div>
 
@@ -908,7 +885,9 @@ export default function AdminHome() {
             </div>
             {Object.entries(serverColors).map(([serverName, color]) => {
               const serverInfo = getServerInfo(serverName)
-              const bandwidth = bandwidthHistory[bandwidthHistory.length - 1]?.serverBandwidths[serverName] || 0
+              const lastPoint = bandwidthHistory[bandwidthHistory.length - 1]
+              const servers = lastPoint ? (lastPoint.serverBandwidths || lastPoint.server_bandwidths || {}) : {}
+              const bandwidth = servers[serverName] || 0
               return (
                 <div key={serverName} className="flex items-center gap-1">
                   <div className="w-3 h-3 rounded" style={{ backgroundColor: color }}></div>
