@@ -17,6 +17,7 @@ from ....models.settings import PortainerIntegration
 from ....models.user_permission import UserPermission
 from ....models.server import Server
 from ....services.portainer_service import PortainerService
+from ....services.portainer_auth_service import PortainerAuthService
 from ....services.audit_service import AuditService
 
 router = APIRouter()
@@ -24,6 +25,17 @@ router = APIRouter()
 # Simple in-memory cache for metrics (1 second TTL)
 metrics_cache = {}
 CACHE_TTL = 1  # 1 second cache to handle rapid requests
+
+
+async def get_fresh_portainer_token(db: Session, integration: PortainerIntegration) -> str:
+    """Helper to get a fresh Portainer token, raising HTTPException if failed"""
+    fresh_token = await PortainerAuthService.get_fresh_token(db, integration)
+    if not fresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Failed to refresh Portainer authentication. Please reconfigure with username and password."
+        )
+    return fresh_token
 
 
 class PortainerAuthRequest(BaseModel):
@@ -81,9 +93,11 @@ async def authenticate_portainer(
                 detail="Either API token or username/password required"
             )
 
-        # Save integration settings
+        # Save integration settings with credentials for auto-refresh if provided
         success = await service.save_integration(
-            current_user.id, url, token, auth_data.endpoint_id
+            current_user.id, url, token, auth_data.endpoint_id,
+            username=auth_data.username if auth_data.username else None,
+            password=auth_data.password if auth_data.password else None
         )
 
         if not success:
@@ -117,9 +131,13 @@ async def get_portainer_status(
             "message": "Portainer not configured"
         }
 
-    # Test connection
+    # Test connection with fresh token
     async with PortainerService(db) as service:
-        is_connected = await service.test_connection(integration.url, integration.api_token)
+        try:
+            fresh_token = await get_fresh_portainer_token(db, integration)
+            is_connected = await service.test_connection(integration.url, fresh_token)
+        except:
+            is_connected = False
 
     return {
         "connected": is_connected,
@@ -148,8 +166,10 @@ async def get_portainer_containers(
         )
 
     async with PortainerService(db) as service:
+        # Get fresh token (auto-refresh if needed)
+        fresh_token = await get_fresh_portainer_token(db, integration)
         containers = await service.get_containers(
-            integration.url, integration.api_token, integration.endpoint_id
+            integration.url, fresh_token, integration.endpoint_id
         )
 
         # Update cached containers
@@ -192,13 +212,41 @@ async def set_container_mapping(
     return {"success": True, "mappings": integration.container_mappings}
 
 
+@router.post("/portainer/sync-containers")
+async def sync_container_mappings(
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Manually trigger container mapping sync to update IDs"""
+    integration = db.query(PortainerIntegration).filter(
+        PortainerIntegration.enabled == True
+    ).first()
+
+    if not integration:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Portainer integration not configured"
+        )
+
+    async with PortainerService(db) as service:
+        success = await service.sync_container_mappings(integration)
+
+    if success:
+        return {"message": "Container mappings synchronized successfully"}
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to sync container mappings"
+        )
+
+
 @router.get("/portainer/metrics/{server_id}")
 async def get_portainer_metrics(
     server_id: int,
     current_user: User = Depends(get_current_admin_or_local_user),
     db: Session = Depends(get_db)
 ):
-    """Get real-time container metrics from Portainer with caching"""
+    """Get real-time container metrics from Portainer with caching and auto-sync"""
     # Check permissions for local users
     if current_user.type == UserType.local_user:
         permission = db.query(UserPermission).filter(
@@ -244,12 +292,25 @@ async def get_portainer_metrics(
     container_name = server_mapping.get("container_name")
 
     async with PortainerService(db) as service:
+        # Get fresh token (auto-refresh if needed)
+        try:
+            fresh_token = await get_fresh_portainer_token(db, integration)
+        except:
+            return {
+                "cpu_usage": 0,
+                "memory_usage": 0,
+                "memory_used_gb": 0,
+                "memory_total_gb": 0,
+                "container": container_name,
+                "error": "Token refresh failed"
+            }
+
         # Get container stats and GPU stats in parallel
         stats_task = service.get_container_stats(
-            integration.url, integration.api_token, container_id, integration.endpoint_id
+            integration.url, fresh_token, container_id, integration.endpoint_id
         )
         gpu_task = service.get_gpu_stats(
-            integration.url, integration.api_token, container_id, integration.endpoint_id
+            integration.url, fresh_token, container_id, integration.endpoint_id
         )
 
         stats, gpu_stats = await asyncio.gather(stats_task, gpu_task)
@@ -325,8 +386,9 @@ async def container_action(
     container_id = server_mapping.get("container_id")
 
     async with PortainerService(db) as service:
+        fresh_token = await get_fresh_portainer_token(db, integration)
         result = await service.container_action(
-            integration.url, integration.api_token, container_id, action, integration.endpoint_id
+            integration.url, fresh_token, container_id, action, integration.endpoint_id
         )
 
         if not result.get("success"):
@@ -387,8 +449,9 @@ async def get_container_info(
     container_id = server_mapping.get("container_id")
 
     async with PortainerService(db) as service:
+        fresh_token = await get_fresh_portainer_token(db, integration)
         info = await service.get_container_info(
-            integration.url, integration.api_token, container_id, integration.endpoint_id
+            integration.url, fresh_token, container_id, integration.endpoint_id
         )
 
         return {
@@ -440,8 +503,9 @@ async def start_container(
     container_id = server_mapping.get("container_id")
 
     async with PortainerService(db) as service:
+        fresh_token = await get_fresh_portainer_token(db, integration)
         result = await service.start_container(
-            integration.url, integration.api_token, container_id, integration.endpoint_id
+            integration.url, fresh_token, container_id, integration.endpoint_id
         )
 
         if not result.get("success"):
@@ -495,8 +559,9 @@ async def stop_container(
     container_id = server_mapping.get("container_id")
 
     async with PortainerService(db) as service:
+        fresh_token = await get_fresh_portainer_token(db, integration)
         result = await service.stop_container(
-            integration.url, integration.api_token, container_id, integration.endpoint_id
+            integration.url, fresh_token, container_id, integration.endpoint_id
         )
 
         if not result.get("success"):
@@ -537,8 +602,9 @@ async def update_container(
     container_id = server_mapping.get("container_id")
 
     async with PortainerService(db) as service:
+        fresh_token = await get_fresh_portainer_token(db, integration)
         result = await service.recreate_container(
-            integration.url, integration.api_token, container_id, integration.endpoint_id
+            integration.url, fresh_token, container_id, integration.endpoint_id
         )
 
         if result.get("success"):
@@ -601,8 +667,9 @@ async def restart_container(
     container_id = server_mapping.get("container_id")
 
     async with PortainerService(db) as service:
+        fresh_token = await get_fresh_portainer_token(db, integration)
         result = await service.restart_container(
-            integration.url, integration.api_token, container_id, integration.endpoint_id
+            integration.url, fresh_token, container_id, integration.endpoint_id
         )
 
         if not result.get("success"):

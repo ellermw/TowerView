@@ -8,6 +8,9 @@ from datetime import datetime
 import logging
 from sqlalchemy.orm import Session
 
+from .portainer_auth_service import PortainerAuthService
+from ..models.settings import PortainerIntegration
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,6 +30,85 @@ class PortainerService:
         """Async context manager exit"""
         if self.session:
             await self.session.close()
+
+    async def _get_fresh_token(self, integration: Optional[PortainerIntegration] = None) -> Optional[str]:
+        """Get a fresh token, using cached integration or provided one"""
+        if not integration:
+            # Get the first (global) integration
+            integration = self.db.query(PortainerIntegration).first()
+            if not integration:
+                logger.error("No Portainer integration configured")
+                return None
+
+        # Use the auth service to get a fresh token
+        return await PortainerAuthService.get_fresh_token(self.db, integration)
+
+    async def sync_container_mappings(self, integration: Optional[PortainerIntegration] = None) -> bool:
+        """
+        Automatically sync container mappings by matching container names.
+        Updates container IDs if containers have been recreated.
+        """
+        try:
+            if not integration:
+                integration = self.db.query(PortainerIntegration).first()
+                if not integration:
+                    logger.error("No Portainer integration configured")
+                    return False
+
+            # Get fresh token
+            fresh_token = await self._get_fresh_token(integration)
+            if not fresh_token:
+                logger.error("Failed to get fresh token for container sync")
+                return False
+
+            # Get current containers from Portainer
+            containers = await self.get_containers(integration.url, fresh_token, integration.endpoint_id)
+            if not containers:
+                logger.warning("No containers found during sync")
+                return False
+
+            # Create a map of container names to IDs
+            container_map = {c['name']: c['id'] for c in containers}
+
+            # Update mappings if container IDs have changed
+            current_mappings = integration.container_mappings or {}
+            updated_mappings = {}
+            changes_made = False
+
+            for server_id, mapping in current_mappings.items():
+                container_name = mapping.get('container_name')
+                old_container_id = mapping.get('container_id')
+
+                if container_name and container_name in container_map:
+                    new_container_id = container_map[container_name]
+
+                    # Check if ID has changed
+                    if old_container_id != new_container_id:
+                        logger.info(f"Container '{container_name}' ID changed from {old_container_id[:12]} to {new_container_id[:12]}")
+                        changes_made = True
+
+                    updated_mappings[server_id] = {
+                        'container_id': new_container_id,
+                        'container_name': container_name
+                    }
+                else:
+                    # Keep the old mapping if container not found (might be stopped)
+                    updated_mappings[server_id] = mapping
+                    if container_name and container_name not in container_map:
+                        logger.warning(f"Container '{container_name}' not found in Portainer (may be stopped)")
+
+            # Update the integration if changes were made
+            if changes_made:
+                integration.container_mappings = updated_mappings
+                integration.updated_at = datetime.utcnow()
+                self.db.commit()
+                logger.info(f"Updated container mappings for {len(updated_mappings)} servers")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to sync container mappings: {e}")
+            return False
 
     async def authenticate(self, url: str, username: str, password: str) -> Dict[str, Any]:
         """Authenticate with Portainer and get JWT token"""
@@ -459,7 +541,8 @@ class PortainerService:
             logger.error(f"Error recreating container: {e}")
             return {"success": False, "message": f"Error: {str(e)}"}
 
-    async def save_integration(self, user_id: int, url: str, token: str, endpoint_id: int = 1) -> bool:
+    async def save_integration(self, user_id: int, url: str, token: str, endpoint_id: int = 1,
+                              username: Optional[str] = None, password: Optional[str] = None) -> bool:
         """Save Portainer integration settings to database"""
         from ..models.settings import PortainerIntegration
 
@@ -494,6 +577,12 @@ class PortainerService:
             integration.endpoint_id = actual_endpoint_id
             integration.enabled = True
             integration.updated_at = datetime.utcnow()
+
+            # Store credentials for automatic token refresh if provided
+            if username:
+                integration.username = username
+            if password:
+                integration.password = password  # In production, encrypt this
 
             # Get and cache containers using the correct endpoint ID
             containers = await self.get_containers(url, token, actual_endpoint_id)

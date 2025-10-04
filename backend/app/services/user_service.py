@@ -1,6 +1,7 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from ..models.user import User, UserType
+from ..models.user_permission import UserPermission
 from ..schemas.user import UserCreate
 
 
@@ -36,3 +37,10 @@ class UserService:
         self.db.commit()
         self.db.refresh(user)
         return user
+
+    def get_user_server_permission(self, user_id: int, server_id: int) -> Optional[UserPermission]:
+        """Get user permissions for a specific server"""
+        return self.db.query(UserPermission).filter(
+            UserPermission.user_id == user_id,
+            UserPermission.server_id == server_id
+        ).first()

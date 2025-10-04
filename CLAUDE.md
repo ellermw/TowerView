@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TowerView is a unified media server management platform that provides a single administrative interface for managing multiple media servers (Plex, Jellyfin, Emby). It includes real-time monitoring, user management, session control, analytics, and Docker container management via Portainer integration.
 
-**Current Version:** 2.3.4
+**Current Version:** 2.3.6
 
 ## Architecture
 
@@ -32,20 +32,30 @@ TowerView supports two deployment modes:
 ### Full Development Stack (7 containers)
 
 ```bash
-# Start all services
-docker-compose up -d
+# Start all services (with Makefile)
+make dev                    # Start with logs
+make dev-detached          # Start in background
 
-# View logs
-docker-compose logs -f backend
-docker-compose logs -f frontend
-docker-compose logs -f worker
+# View logs (with Makefile)
+make logs                   # All services
+make logs-backend          # Backend only
+make logs-frontend         # Frontend only
+make logs-worker           # Worker only
 
-# Rebuild after changes
-docker-compose build
-docker-compose up -d
+# Database operations (with Makefile)
+make db-migrate            # Run migrations
+make db-create-migration MESSAGE="description"
+make db-reset              # Reset database
 
-# Stop services
-docker-compose down
+# Shell access (with Makefile)
+make shell-backend         # Backend container shell
+make shell-worker          # Worker container shell
+make shell-db             # PostgreSQL shell
+
+# Manual Docker commands
+docker-compose up -d       # Start all services
+docker-compose logs -f backend  # View backend logs
+docker-compose down        # Stop services
 ```
 
 ### Backend Development
@@ -104,14 +114,19 @@ celery -A worker.celery_app beat --loglevel=info
 Media server integrations follow a provider pattern with a common base interface:
 
 - **Base**: `backend/app/providers/base.py` - Abstract base class defining provider interface
-- **Implementations**: `plex.py`, `emby.py`, `jellyfin.py` - Server-specific implementations
+- **Implementations**: `plex.py` (1162 lines), `emby.py` (891 lines), `jellyfin.py` (829 lines)
 - **Factory**: `backend/app/providers/factory.py` - Creates appropriate provider instances
 
-Each provider implements:
-- `get_sessions()` - Fetch active streaming sessions
-- `get_users()` - Fetch media server users
+Each provider implements these key methods:
+- `connect()` - Initialize connection to media server
+- `authenticate_user()` - Verify user credentials
+- `list_active_sessions()` - Fetch active streaming sessions
+- `list_users()` - Fetch all media server users
 - `terminate_session()` - Stop a streaming session
-- `authenticate()` - Verify user credentials
+- `modify_user()` - Update user settings
+- `list_libraries()` - Get available libraries
+- `set_library_access()` - Manage user library permissions
+- `get_media_info()` - Retrieve media details
 
 ### Caching Architecture
 
@@ -135,12 +150,14 @@ All cache services start on application startup via the FastAPI `lifespan` conte
 
 ### Background Tasks
 
-Celery workers handle:
-- **Server polling** (every 30s): Poll all servers for active sessions
-- **Session cleanup** (every 5min): Remove stale session records
-- **Analytics collection**: Track bandwidth, playback events, daily statistics
+Celery workers handle scheduled tasks defined in `worker/worker/tasks.py`:
 
-Beat schedule defined in `worker/worker/celery_app.py`.
+- **poll_all_servers** (every 30s): Poll all enabled servers for active sessions
+- **cleanup_old_sessions** (every 5min): Remove sessions older than 30 days
+- **sync_users_task**: On-demand sync of users from media servers
+- **sync_libraries_task**: On-demand sync of library information
+
+Beat schedule defined in `worker/worker/celeryconfig.py`.
 
 ## Database Models
 
@@ -184,13 +201,29 @@ API client in `frontend/src/services/api.ts` handles:
 
 ## API Routes
 
-Routes defined in `backend/app/api/routes/`:
+Routes defined in `backend/app/api/routes/` (modularized in subdirectories):
 
-- **auth.py**: Login, logout, refresh tokens, password changes
-- **admin.py**: Servers, sessions, users, analytics, audit logs, cache management
-- **settings.py**: Portainer integration, site settings, container management
-- **users.py**: Current user profile
-- **websocket_metrics.py**: Real-time metrics WebSocket
+### Authentication (`auth.py` - 27,025 lines)
+- `POST /api/auth/login` - Staff login
+- `POST /api/auth/media/username` - Media user login
+- `POST /api/auth/media/plex/oauth` - Plex OAuth flow
+- `POST /api/auth/refresh` - Refresh token
+- `POST /api/auth/change-password` - Password change
+
+### Admin Operations (`admin/` subdirectory)
+- Server management: CRUD operations for media servers
+- Session management: View/terminate sessions, cache control
+- User management: System and media user operations
+- Analytics: Bandwidth, playback statistics
+- Audit logs: Administrative action tracking
+
+### Settings (`settings/` subdirectory)
+- Portainer integration: Container management, metrics
+- Site settings: Application configuration
+- Sync settings: Automatic sync intervals
+
+### WebSocket
+- `/api/ws/metrics` - Real-time metrics updates
 
 ## Environment Configuration
 
@@ -214,9 +247,13 @@ ADMIN_PASSWORD=secure_password
 
 ## Important Implementation Notes
 
+### Container Synchronization
+
+TowerView automatically syncs Docker container mappings every 5 minutes via `container_sync_service.py`. This handles container ID changes when containers are recreated. Manual sync available in Settings > Portainer.
+
 ### Credential Encryption
 
-Media server credentials are encrypted before storage using Fernet encryption. See `worker/worker/encryption.py` and `backend/app/services/server_service.py`.
+Media server credentials are encrypted before storage using Fernet encryption. See `backend/app/core/security.py` for `credential_encryption` implementation.
 
 ### HDR and Resolution Detection
 
@@ -273,9 +310,20 @@ For Emby/Jellyfin users, library access is pre-checked based on current user per
 3. Add cache status and refresh endpoints in admin routes
 4. Configure appropriate TTL and refresh intervals
 
+## File Structure
+
+Key directories and files:
+- `backend/app/providers/` - Media server provider implementations
+- `backend/app/api/routes/admin/` - Modularized admin endpoints
+- `backend/app/services/` - Business logic and cache services
+- `frontend/src/components/admin/AdminHome.tsx` - Main dashboard (bandwidth graphs, sessions)
+- `worker/worker/tasks.py` - Background task definitions
+- `supervisord.conf` - Production process management
+- `deploy.sh` - Automated production deployment script
+
 ## Testing
 
-Currently no automated tests are configured. When adding tests:
+Limited automated tests exist in `backend/tests/`. When adding tests:
 
 - Backend: Use pytest with FastAPI TestClient
 - Frontend: Use Vitest + React Testing Library
@@ -352,3 +400,40 @@ docker exec -i towerview-db-1 psql -U towerview towerview < backup.sql
 - Users must change password on next login
 
 This prevents the recurring "incorrect credentials" issue after Docker updates.
+
+## Troubleshooting Common Issues
+
+### Sessions Not Loading
+Sessions are cached for 5 seconds. Force refresh:
+```bash
+curl -X POST http://localhost:8080/api/admin/sessions/refresh-cache
+```
+
+### Container Metrics Show 0%
+Container IDs may have changed. System auto-syncs every 5 minutes, or manually sync in Settings > Portainer.
+
+### Plex Session Termination Fails
+- Ensure using Plex admin token (not Plex.tv token)
+- Check Plex Pass subscription for termination features
+- Verify token has admin permissions
+- Local sessions may not be terminable remotely
+
+### Bandwidth Graph Issues
+- Fixed in v2.3.6: Y-axis now properly scales to show all server bandwidth ranges
+- Previously was using minimum of maximums instead of true minimum
+- Graph now correctly displays individual server lines at different bandwidth levels
+- Check browser console for debug logs showing detected servers and bandwidth values
+
+### Staff User Permission Issues
+- Fixed in v2.3.6: Staff users can now properly terminate sessions
+- Permission checks now use UserPermission table instead of server ownership
+- Username conflict checks only validate among system users (admin/staff/support)
+
+### Audit Logs Not Loading
+- Fixed in v2.3.6: Created missing audit log endpoints
+- Implemented paginated response format
+- Fixed Pydantic v2 compatibility (use `from_attributes` instead of `orm_mode`)
+- Session usernames now properly captured before termination
+
+### Login Failures After Rebuild
+Password hashes are automatically migrated on startup. Check backend logs for migration status.

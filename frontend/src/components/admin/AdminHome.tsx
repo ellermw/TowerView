@@ -21,7 +21,7 @@ import {
   ComputerDesktopIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline'
-import { Disclosure, Transition } from '@headlessui/react'
+import { Disclosure, Transition, Dialog } from '@headlessui/react'
 import api from '../../services/api'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useAuthStore } from '../../store/authStore'
@@ -255,15 +255,31 @@ export default function AdminHome() {
     }
   )
 
+  // State for Plex termination message modal
+  const [plexTerminateModal, setPlexTerminateModal] = React.useState<{
+    open: boolean
+    serverId?: number
+    sessionId?: string
+    serverType?: string
+  }>({ open: false })
+  const [plexTerminateMessage, setPlexTerminateMessage] = React.useState('')
+
+  // Get default Plex termination message from settings
+  const defaultPlexMessage = localStorage.getItem('plexTerminationMessage') || 'Your stream has been terminated by an administrator'
+
   // Terminate session mutation
   const terminateSessionMutation = useMutation(
-    ({ serverId, sessionId }: { serverId: number, sessionId: string }) => {
-      return api.post(`/admin/servers/${serverId}/sessions/${sessionId}/terminate`)
+    ({ serverId, sessionId, message }: { serverId: number, sessionId: string, message?: string }) => {
+      const data = message ? { message } : undefined
+      return api.post(`/admin/servers/${serverId}/sessions/${sessionId}/terminate`, data)
     },
     {
+      retry: false, // Don't retry on failure (authorization errors won't be fixed by retrying)
       onSuccess: () => {
         toast.success('Session terminated successfully')
         refetchSessions()
+        setPlexTerminateModal({ open: false })
+        setPlexTerminateMessage('')
       },
       onError: (error: any) => {
         const errorMessage = error.response?.data?.detail || 'Failed to terminate session'
@@ -271,6 +287,23 @@ export default function AdminHome() {
       }
     }
   )
+
+  // Handle termination click
+  const handleTerminateClick = (serverId: number, sessionId: string, serverType?: string) => {
+    if (serverType === 'plex') {
+      // Show modal for Plex servers
+      setPlexTerminateModal({
+        open: true,
+        serverId,
+        sessionId,
+        serverType
+      })
+      setPlexTerminateMessage(defaultPlexMessage)
+    } else {
+      // Direct termination for non-Plex servers
+      terminateSessionMutation.mutate({ serverId, sessionId })
+    }
+  }
 
   // Store sessions in a ref to avoid re-running effect on every update
   const sessionsRef = React.useRef(sessions || [])
@@ -289,6 +322,17 @@ export default function AdminHome() {
       const serverBandwidths: Record<string, number> = {}
 
       const currentSessions = sessionsRef.current
+
+      // Debug: Log session data to understand bandwidth distribution
+      if (currentSessions && Array.isArray(currentSessions)) {
+        console.log('Current sessions for bandwidth calculation:', currentSessions.map(s => ({
+          server: s.server_name,
+          bandwidth: s.session_bandwidth,
+          user: s.username,
+          title: s.title
+        })))
+      }
+
       if (currentSessions && Array.isArray(currentSessions) && currentSessions.length > 0) {
         currentSessions.forEach(session => {
           const bandwidth = session.session_bandwidth ?
@@ -300,6 +344,12 @@ export default function AdminHome() {
           const serverKey = session.server_name || `Server ${session.server_id || 'Unknown'}`
           serverBandwidths[serverKey] = (serverBandwidths[serverKey] || 0) + bandwidth
         })
+
+        // Debug: Log calculated server bandwidths
+        console.log('Calculated server bandwidths:', serverBandwidths)
+        console.log('Total bandwidth:', totalBandwidth)
+      } else {
+        console.log('No sessions found or sessions is not an array')
       }
 
       setBandwidthHistory(prev => {
@@ -342,6 +392,12 @@ export default function AdminHome() {
     bandwidthHistory.forEach(point => {
       Object.keys(point.serverBandwidths).forEach(server => serverNames.add(server))
     })
+
+    // Debug: Log server names found
+    if (serverNames.size > 0) {
+      console.log('Servers found in bandwidth data:', Array.from(serverNames))
+      console.log('Latest bandwidth data:', bandwidthHistory[bandwidthHistory.length - 1]?.serverBandwidths)
+    }
 
     const serverColorMap: Record<string, string> = {}
     Array.from(serverNames).forEach((server, index) => {
@@ -619,15 +675,21 @@ export default function AdminHome() {
       )
     }
 
-    // Find the max and min individual server bandwidths (not total)
-    // Get all individual server bandwidth values across all time points
-    const allServerBandwidthsRaw: number[] = []
+    // Debug: Log the bandwidth history structure
+    console.log('BandwidthGraph rendering with history:', {
+      historyLength: bandwidthHistory.length,
+      latestPoint: bandwidthHistory[bandwidthHistory.length - 1],
+      allServerNames: Array.from(new Set(bandwidthHistory.flatMap(p => Object.keys(p.serverBandwidths || {}))))
+    })
+
+    // Find the max and min individual server bandwidth across all time points
+    const allServerBandwidths: number[] = []
 
     bandwidthHistory.forEach(point => {
       Object.entries(point.serverBandwidths || {}).forEach(([serverName, bandwidth]) => {
         // Make sure we're not accidentally including a "total" entry
         if (serverName.toLowerCase() !== 'total' && bandwidth > 0) {
-          allServerBandwidthsRaw.push(bandwidth)
+          allServerBandwidths.push(bandwidth)
         }
       })
     })
@@ -635,22 +697,25 @@ export default function AdminHome() {
     let actualMaxBandwidth = 100000 // Default 100 Mbps if no data
     let actualMinBandwidth = 0
 
-    if (allServerBandwidthsRaw.length > 0) {
-      actualMaxBandwidth = Math.max(...allServerBandwidthsRaw)
-      actualMinBandwidth = Math.min(...allServerBandwidthsRaw)
+    if (allServerBandwidths.length > 0) {
+      // The Y-axis should show the full range of all server bandwidths
+      actualMaxBandwidth = Math.max(...allServerBandwidths)
+      actualMinBandwidth = Math.min(...allServerBandwidths)
     }
 
-    // Set Y-axis max to 20% above highest server, min to 20% below lowest
-    // But never use 0 as min if we have actual data
+    // Set Y-axis max to 20% above highest server
     const scaledMaxBandwidth = actualMaxBandwidth * 1.2
-    const scaledMinBandwidth = actualMinBandwidth > 0 ? actualMinBandwidth * 0.8 : 0
 
-    // If we have data but min would be 0, set it to something reasonable
-    const minBandwidth = (actualMaxBandwidth > 0 && scaledMinBandwidth === 0)
-      ? actualMaxBandwidth * 0.1  // Use 10% of max as min if we have data but min is 0
-      : scaledMinBandwidth
+    // For minimum, we want to show the full range but not go below 0
+    // If the minimum is very small compared to max, just use 0
+    let scaledMinBandwidth = 0
+    if (actualMinBandwidth > actualMaxBandwidth * 0.05) {
+      // Only use a non-zero minimum if it's at least 5% of the maximum
+      scaledMinBandwidth = Math.max(0, actualMinBandwidth * 0.8)
+    }
 
     const maxBandwidth = scaledMaxBandwidth
+    const minBandwidth = scaledMinBandwidth
 
     // Ensure we have a reasonable range for the graph
     const bandwidthRange = maxBandwidth - minBandwidth
@@ -659,14 +724,14 @@ export default function AdminHome() {
     let adjustedMinBandwidth = minBandwidth
 
     // If we have no server data, try to estimate from total
-    if (allServerBandwidthsRaw.length === 0 && bandwidthHistory.length > 0) {
+    if (allServerBandwidths.length === 0 && bandwidthHistory.length > 0) {
       const latestTotal = bandwidthHistory[bandwidthHistory.length - 1].totalBandwidth
       if (latestTotal > 0) {
         // No individual server data but have total - estimate max as half of total
         // (assuming at least 2 servers sharing the load)
         const estimatedServerMax = latestTotal / 2
         adjustedMaxBandwidth = estimatedServerMax * 1.2
-        adjustedMinBandwidth = estimatedServerMax * 0.1
+        adjustedMinBandwidth = 0  // Start from 0 when we have no actual server data
       }
     }
 
@@ -742,26 +807,62 @@ export default function AdminHome() {
                 return null
               })}
 
-              {/* Individual server lines */}
-              {Object.keys(serverColors).map(serverName => (
-                <polyline
-                  key={serverName}
-                  fill="none"
-                  stroke={serverColors[serverName]}
-                  strokeWidth="1.5"
-                  vectorEffect="non-scaling-stroke"
-                  opacity="0.7"
-                  points={bandwidthHistory.map((point, index) => {
-                    // Handle single point case
-                    const x = bandwidthHistory.length === 1 ? 50 : (index / (bandwidthHistory.length - 1)) * 100
-                    const bandwidth = point.serverBandwidths[serverName] || 0
-                    // Scale bandwidth relative to the adjusted min-max range
-                    const range = adjustedMaxBandwidth - adjustedMinBandwidth
-                    const y = range > 0 ? 95 - ((bandwidth - adjustedMinBandwidth) / range) * 85 : 50
-                    return `${x},${y}`
-                  }).join(' ')}
-                />
-              ))}
+              {/* Individual server lines - render each as a separate group */}
+              {Object.keys(serverColors).map((serverName, serverIndex) => {
+                // Build path data for this server
+                const pathData = bandwidthHistory.map((point, index) => {
+                  const x = bandwidthHistory.length === 1 ? 50 : (index / (bandwidthHistory.length - 1)) * 100
+                  const bandwidth = point.serverBandwidths[serverName] || 0
+                  const range = adjustedMaxBandwidth - adjustedMinBandwidth
+                  const y = range > 0 ? 95 - ((bandwidth - adjustedMinBandwidth) / range) * 85 : 50
+                  return { x, y, bandwidth }
+                })
+
+                // Debug: Log path data for first server only to avoid spam
+                if (serverIndex === 0 && pathData.length > 0) {
+                  console.log(`Graph data for ${serverName}:`, {
+                    latestBandwidth: pathData[pathData.length - 1]?.bandwidth,
+                    yPosition: pathData[pathData.length - 1]?.y,
+                    adjustedMax: adjustedMaxBandwidth,
+                    adjustedMin: adjustedMinBandwidth
+                  })
+                }
+
+                // Skip if no data
+                if (pathData.length === 0) return null
+
+                // Build SVG path string
+                const pathString = pathData.map((point, index) => {
+                  return `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`
+                }).join(' ')
+
+                return (
+                  <g key={`server-${serverName}-${serverIndex}`}>
+                    <path
+                      d={pathString}
+                      fill="none"
+                      stroke={serverColors[serverName]}
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      opacity="0.9"
+                    />
+                    {/* Add dots at data points for better visibility */}
+                    {pathData.length <= 20 && pathData.map((point, pointIndex) => (
+                      point.bandwidth > 0 && (
+                        <circle
+                          key={`dot-${pointIndex}`}
+                          cx={point.x}
+                          cy={point.y}
+                          r="1.5"
+                          fill={serverColors[serverName]}
+                          opacity="1"
+                        />
+                      )
+                    ))}
+                  </g>
+                )
+              })}
             </svg>
           </div>
 
@@ -1090,10 +1191,11 @@ export default function AdminHome() {
                                                     (currentUser?.type === 'media_user' &&
                                                      session.username?.toLowerCase() === currentUser?.username?.toLowerCase())) && (
                                                     <button
-                                                      onClick={() => terminateSessionMutation.mutate({
-                                                        serverId: session.server_id!,
-                                                        sessionId: session.session_id
-                                                      })}
+                                                      onClick={() => handleTerminateClick(
+                                                        session.server_id!,
+                                                        session.session_id,
+                                                        serverType
+                                                      )}
                                                       disabled={terminateSessionMutation.isLoading}
                                                       className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
                                                       title="Terminate Session"
@@ -1229,7 +1331,9 @@ export default function AdminHome() {
                                                 <div className="mt-3">
                                                   <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
                                                     <span>{formatTime(session.progress_ms)}</span>
-                                                    <span>{session.progress_percent?.toFixed(1) || '0.0'}%</span>
+                                                    <span className="text-center">
+                                                      {session.progress_percent?.toFixed(1) || '0.0'}% / {formatTime((session.duration_ms || 0) - (session.progress_ms || 0))} remaining
+                                                    </span>
                                                     <span>{formatTime(session.duration_ms)}</span>
                                                   </div>
                                                   <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
@@ -1476,6 +1580,87 @@ export default function AdminHome() {
         )}
       </div>
       ) : null}
+
+      {/* Plex Termination Message Modal */}
+      <Transition show={plexTerminateModal.open} as={React.Fragment}>
+        <Dialog as="div" className="relative z-50" onClose={() => setPlexTerminateModal({ open: false })}>
+          <Transition.Child
+            as={React.Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-black bg-opacity-25" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Transition.Child
+                as={React.Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white dark:bg-slate-800 p-6 text-left align-middle shadow-xl transition-all">
+                  <Dialog.Title
+                    as="h3"
+                    className="text-lg font-medium leading-6 text-slate-900 dark:text-white"
+                  >
+                    Terminate Plex Stream
+                  </Dialog.Title>
+                  <div className="mt-2">
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                      Enter a message to display to the user (optional). If left blank, the default message will be used.
+                    </p>
+                    <textarea
+                      value={plexTerminateMessage}
+                      onChange={(e) => setPlexTerminateMessage(e.target.value)}
+                      placeholder="Enter termination message..."
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-700 dark:text-white"
+                      rows={3}
+                    />
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                      Default: "{defaultPlexMessage}"
+                    </p>
+                  </div>
+
+                  <div className="mt-4 flex justify-end space-x-2">
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-transparent bg-slate-100 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                      onClick={() => setPlexTerminateModal({ open: false })}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+                      onClick={() => {
+                        if (plexTerminateModal.serverId && plexTerminateModal.sessionId) {
+                          terminateSessionMutation.mutate({
+                            serverId: plexTerminateModal.serverId,
+                            sessionId: plexTerminateModal.sessionId,
+                            message: plexTerminateMessage || defaultPlexMessage
+                          })
+                        }
+                      }}
+                      disabled={terminateSessionMutation.isLoading}
+                    >
+                      {terminateSessionMutation.isLoading ? 'Terminating...' : 'Terminate Stream'}
+                    </button>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
     </div>
   )
 }

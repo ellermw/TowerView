@@ -180,6 +180,9 @@ class UsersCacheService:
                 elif result:
                     all_users.extend(result)
 
+            # Fetch last activity from playback_events for users without it
+            all_users = await self._enrich_with_playback_activity(all_users, db)
+
             # Update cache with lock to ensure thread safety
             async with self._lock:
                 self.users_cache = all_users
@@ -216,6 +219,70 @@ class UsersCacheService:
         except Exception as e:
             logger.error(f"Failed to fetch users from server {server.name}: {e}")
             raise
+
+    async def _enrich_with_playback_activity(self, users: List[Dict], db) -> List[Dict]:
+        """Enrich users with last activity from playback_events table"""
+        try:
+            from sqlalchemy import text
+            from datetime import datetime
+
+            # Build a query to get the most recent activity for each user
+            # Group by server_id and username to get last activity per user per server
+            query = text("""
+                SELECT DISTINCT ON (server_id, username, provider_user_id)
+                    server_id,
+                    username,
+                    provider_user_id,
+                    MAX(started_at) as last_activity
+                FROM playback_events
+                WHERE username IS NOT NULL
+                   OR provider_user_id IS NOT NULL
+                GROUP BY server_id, username, provider_user_id
+                ORDER BY server_id, username, provider_user_id
+            """)
+
+            result = db.execute(query)
+            activity_map = {}
+
+            # Build a map of (server_id, username) -> last_activity
+            for row in result:
+                # Use both username and provider_user_id as keys
+                if row.username:
+                    key = (row.server_id, row.username.lower())
+                    activity_map[key] = row.last_activity
+                if row.provider_user_id:
+                    key_id = (row.server_id, f"id:{row.provider_user_id}")
+                    activity_map[key_id] = row.last_activity
+
+            # Update users with last activity
+            for user in users:
+                # Skip if user already has last_activity from the provider
+                if user.get("last_activity"):
+                    continue
+
+                server_id = user.get("server_id")
+                username = user.get("username")
+                user_id = user.get("user_id")
+
+                # Try to find activity by username first
+                if server_id and username:
+                    key = (server_id, username.lower())
+                    if key in activity_map:
+                        user["last_activity"] = activity_map[key].isoformat()
+                        continue
+
+                # Try by user_id if username didn't match
+                if server_id and user_id:
+                    key_id = (server_id, f"id:{user_id}")
+                    if key_id in activity_map:
+                        user["last_activity"] = activity_map[key_id].isoformat()
+
+            return users
+
+        except Exception as e:
+            logger.error(f"Error enriching users with playback activity: {e}")
+            # Return users unchanged if there's an error
+            return users
 
     def get_cache_status(self) -> Dict:
         """Get current cache status"""

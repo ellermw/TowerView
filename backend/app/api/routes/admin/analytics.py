@@ -10,7 +10,7 @@ import logging
 from ....core.database import get_db
 from ....core.security import get_current_admin_or_local_user
 from ....models.user import User, UserType
-from ....schemas.analytics import DashboardAnalyticsResponse
+from ....schemas.analytics import DashboardAnalyticsResponse, AnalyticsFilters
 from pydantic import BaseModel
 from typing import Optional
 
@@ -82,6 +82,14 @@ async def get_analytics(
     """Get analytics data with optional filters"""
     analytics_service = AnalyticsService(db)
 
+    # Convert AnalyticsRequest to AnalyticsFilters
+    analytics_filters = AnalyticsFilters(
+        server_id=filters.server_ids[0] if filters.server_ids and len(filters.server_ids) == 1 else None,
+        start_date=datetime.fromisoformat(filters.start_date) if filters.start_date else None,
+        end_date=datetime.fromisoformat(filters.end_date) if filters.end_date else None,
+        days_back=7  # Default value
+    )
+
     # Determine allowed servers based on user type
     allowed_server_ids = None
     if current_user.type == UserType.local_user:
@@ -94,20 +102,23 @@ async def get_analytics(
         if not permissions:
             # No permissions, return empty analytics
             return {
-                "filters": filters,
+                "filters": analytics_filters,
                 "top_users": [],
                 "top_movies": [],
                 "top_tv_shows": [],
                 "top_libraries": [],
                 "top_devices": [],
                 "total_sessions": 0,
+                "total_users": 0,
                 "total_watch_time_hours": 0,
                 "peak_concurrent_sessions": 0,
                 "unique_users": 0,
                 "daily_sessions": [],
                 "hourly_distribution": [],
                 "quality_distribution": [],
-                "transcode_vs_direct": {"direct_play": 0, "transcode": 0}
+                "transcode_vs_direct": {"direct_play": 0, "transcode": 0},
+                "completion_rate": 0,
+                "transcode_rate": 0
             }
 
         allowed_server_ids = [p.server_id for p in permissions]
@@ -115,7 +126,7 @@ async def get_analytics(
     try:
         # Pass allowed_server_ids for local users
         analytics_data = analytics_service.get_dashboard_analytics(
-            filters,
+            analytics_filters,
             allowed_server_ids=allowed_server_ids
         )
         return analytics_data
@@ -123,20 +134,23 @@ async def get_analytics(
         # If analytics fails, return empty data to prevent dashboard crash
         logger.error(f"Analytics query failed: {e}")
         return {
-            "filters": filters,
+            "filters": analytics_filters,
             "top_users": [],
             "top_movies": [],
             "top_tv_shows": [],
             "top_libraries": [],
             "top_devices": [],
             "total_sessions": 0,
+            "total_users": 0,
             "total_watch_time_hours": 0,
             "peak_concurrent_sessions": 0,
             "unique_users": 0,
             "daily_sessions": [],
             "hourly_distribution": [],
             "quality_distribution": [],
-            "transcode_vs_direct": {"direct_play": 0, "transcode": 0}
+            "transcode_vs_direct": {"direct_play": 0, "transcode": 0},
+            "completion_rate": 0,
+            "transcode_rate": 0
         }
 
 
@@ -149,10 +163,11 @@ async def get_analytics_summary(
     """Get a summary of analytics for the last N days"""
     analytics_service = AnalyticsService(db)
 
-    # Create filters for the time period
-    filters = AnalyticsRequest(
-        start_date=(datetime.utcnow() - timedelta(days=days)).isoformat(),
-        end_date=datetime.utcnow().isoformat()
+    # Create filters for the time period - use AnalyticsFilters instead of AnalyticsRequest
+    filters = AnalyticsFilters(
+        start_date=datetime.utcnow() - timedelta(days=days),
+        end_date=datetime.utcnow(),
+        days_back=days
     )
 
     # Determine allowed servers
@@ -180,24 +195,28 @@ async def get_analytics_summary(
 
     # Find most active day
     most_active_day = None
-    if data["daily_sessions"]:
-        most_active = max(data["daily_sessions"], key=lambda x: x["count"])
-        most_active_day = most_active["date"]
+    # Note: daily_sessions and hourly_distribution aren't in DashboardAnalyticsResponse currently
+    # We would need to add these fields to the response model
+    # For now, we'll return None for these fields
 
     # Find peak hour
     peak_hour = None
-    if data["hourly_distribution"]:
-        peak = max(data["hourly_distribution"], key=lambda x: x["count"])
-        peak_hour = f"{peak['hour']}:00"
+
+    # Combine top movies and TV shows for top content
+    top_content = []
+    for movie in data.top_movies[:3]:
+        top_content.append({"title": movie.title, "count": movie.total_plays})
+    for show in data.top_tv_shows[:3]:
+        top_content.append({"title": show.title, "count": show.total_plays})
 
     return {
         "period_days": days,
-        "total_sessions": data["total_sessions"],
-        "unique_users": data["unique_users"],
-        "total_watch_time_hours": data["total_watch_time_hours"],
+        "total_sessions": data.total_sessions,
+        "unique_users": data.total_users,
+        "total_watch_time_hours": data.total_watch_time_hours,
         "most_active_day": most_active_day,
         "peak_hour": peak_hour,
-        "top_content": data["top_movies"][:3] + data["top_tv_shows"][:3]
+        "top_content": top_content
     }
 
 
@@ -211,17 +230,19 @@ async def get_analytics_trends(
 
     # This week
     this_week_start = datetime.utcnow() - timedelta(days=7)
-    this_week_filters = AnalyticsRequest(
-        start_date=this_week_start.isoformat(),
-        end_date=datetime.utcnow().isoformat()
+    this_week_filters = AnalyticsFilters(
+        start_date=this_week_start,
+        end_date=datetime.utcnow(),
+        days_back=7
     )
 
     # Last week
     last_week_start = datetime.utcnow() - timedelta(days=14)
     last_week_end = datetime.utcnow() - timedelta(days=7)
-    last_week_filters = AnalyticsRequest(
-        start_date=last_week_start.isoformat(),
-        end_date=last_week_end.isoformat()
+    last_week_filters = AnalyticsFilters(
+        start_date=last_week_start,
+        end_date=last_week_end,
+        days_back=7
     )
 
     # Get allowed servers for local users
@@ -254,29 +275,29 @@ async def get_analytics_trends(
         return round(((current - previous) / previous) * 100, 1)
 
     sessions_change = calculate_change(
-        this_week_data["total_sessions"],
-        last_week_data["total_sessions"]
+        this_week_data.total_sessions,
+        last_week_data.total_sessions
     )
 
     users_change = calculate_change(
-        this_week_data["unique_users"],
-        last_week_data["unique_users"]
+        this_week_data.total_users,
+        last_week_data.total_users
     )
 
     watch_time_change = calculate_change(
-        this_week_data["total_watch_time_hours"],
-        last_week_data["total_watch_time_hours"]
+        this_week_data.total_watch_time_hours,
+        last_week_data.total_watch_time_hours
     )
 
     # Find trending content
     this_week_content = {}
     last_week_content = {}
 
-    for item in this_week_data["top_movies"] + this_week_data["top_tv_shows"]:
-        this_week_content[item["title"]] = item["count"]
+    for item in this_week_data.top_movies + this_week_data.top_tv_shows:
+        this_week_content[item.title] = item.total_plays
 
-    for item in last_week_data["top_movies"] + last_week_data["top_tv_shows"]:
-        last_week_content[item["title"]] = item["count"]
+    for item in last_week_data.top_movies + last_week_data.top_tv_shows:
+        last_week_content[item.title] = item.total_plays
 
     trending_up = []
     trending_down = []

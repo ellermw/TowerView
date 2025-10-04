@@ -68,6 +68,9 @@ export default function Settings() {
 
   // Site settings state
   const [siteName, setSiteName] = useState('The Tower - View')
+  const [plexTerminationMessage, setPlexTerminationMessage] = useState(
+    localStorage.getItem('plexTerminationMessage') || 'Your stream has been terminated by an administrator'
+  )
 
   // Fetch available servers
   const { data: servers = [] } = useQuery<Server[]>(
@@ -503,6 +506,41 @@ export default function Settings() {
                     >
                       Save
                     </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Plex Settings */}
+          <div className="card">
+            <div className="card-body">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+                Plex Settings
+              </h2>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Default Termination Message
+                  </label>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
+                    Set the default message shown to users when their Plex stream is terminated
+                  </p>
+                  <div className="flex gap-3">
+                    <input
+                      type="text"
+                      value={plexTerminationMessage}
+                      onChange={(e) => {
+                        setPlexTerminationMessage(e.target.value)
+                        localStorage.setItem('plexTerminationMessage', e.target.value)
+                        // Force re-render for other components
+                        window.dispatchEvent(new Event('storage'))
+                        toast.success('Default termination message updated')
+                      }}
+                      placeholder="Enter default termination message..."
+                      className="input flex-1"
+                    />
                   </div>
                 </div>
               </div>

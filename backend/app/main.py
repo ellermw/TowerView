@@ -15,6 +15,7 @@ from .services.metrics_cache_service import metrics_cache
 from .services.bandwidth_cache import start_bandwidth_tracking, stop_bandwidth_tracking
 from .services.sessions_cache_service import sessions_cache_service
 from .services.users_cache_service import users_cache_service
+from .services.container_sync_service import ContainerSyncService
 
 # Configure logging
 logging.basicConfig(
@@ -60,6 +61,10 @@ async def lifespan(app: FastAPI):
     await start_bandwidth_tracking(db)
     logging.info("Started bandwidth tracking service")
 
+    # Start container sync service
+    await ContainerSyncService.start()
+    logging.info("Started container sync service")
+
     yield
 
     # Stop background services on shutdown
@@ -74,6 +79,9 @@ async def lifespan(app: FastAPI):
 
     stop_bandwidth_tracking()
     logging.info("Stopped bandwidth tracking service")
+
+    await ContainerSyncService.stop()
+    logging.info("Stopped container sync service")
 
 app = FastAPI(
     title="Towerview",

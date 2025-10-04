@@ -14,3 +14,4 @@ cryptography>=41.0.0
 httpx==0.25.2
 celery==5.3.4
 aiohttp==3.9.1
+PyJWT==2.8.0

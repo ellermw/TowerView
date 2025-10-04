@@ -180,12 +180,16 @@ async def create_local_user(
     db: Session = Depends(get_db)
 ):
     """Create a new user (role based on creator's permissions)"""
-    # Check if username already exists (case-insensitive)
-    existing_user = db.query(User).filter(func.lower(User.username) == user_data.username.lower()).first()
+    # Check if username already exists among local/staff users only (case-insensitive)
+    # Media users are completely separate and can have the same username
+    existing_user = db.query(User).filter(
+        func.lower(User.username) == user_data.username.lower(),
+        User.type.in_([UserType.admin, UserType.staff, UserType.support, UserType.local_user])
+    ).first()
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already exists"
+            detail="Username already exists among system users"
         )
 
     # Determine what role the new user should have based on creator

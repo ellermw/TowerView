@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-**Version 2.3.5 - Docker Optimization & Password Stability**
+**Version 2.3.6 - Staff Permissions & Bandwidth Graph Fixes**
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -417,7 +417,28 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.5 (Current)
+### Version 2.3.6 (Current)
+- **Staff User Permissions**:
+  - Fixed Staff users unable to terminate sessions (was incorrectly checking server ownership)
+  - Added proper permission checks using UserPermission table
+  - Staff users can now terminate sessions based on their assigned permissions
+  - Fixed username conflict checks to only validate among system users
+- **Audit Logging Fixes**:
+  - Created missing audit log endpoints (`/api/admin/audit-logs`)
+  - Implemented paginated response format for audit logs
+  - Fixed Pydantic v2 compatibility (changed `orm_mode` to `from_attributes`)
+  - Fixed audit logs showing "Unknown" username when terminating sessions
+  - Session info now retrieved before termination for accurate logging
+- **Bandwidth Graph Visualization**:
+  - Fixed Y-axis scaling issue causing all servers to appear at same bandwidth level
+  - Corrected minimum bandwidth calculation (was using min of maximums instead of true minimum)
+  - Graph now properly displays individual server bandwidth lines at correct positions
+  - Improved scaling logic to handle servers with very different bandwidth ranges
+- **UI Improvements**:
+  - Disabled React Query retries for session termination to prevent error message spam
+  - Added proper error handling for missing UserService methods
+
+### Version 2.3.5
 - **Docker Optimization**:
   - Added automatic Docker log rotation (10MB max per file, 3 files retained)
   - Configured system-wide log limits in `/etc/docker/daemon.json`

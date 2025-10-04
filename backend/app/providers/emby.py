@@ -521,6 +521,17 @@ class EmbyProvider(BaseProvider):
                 users = []
 
                 for user in users_data:
+                    # Get last activity date and format it
+                    last_activity = user.get("LastActivityDate")
+                    if last_activity:
+                        # Emby returns ISO format datetime, convert to a readable format
+                        try:
+                            from datetime import datetime
+                            dt = datetime.fromisoformat(last_activity.replace('Z', '+00:00'))
+                            last_activity = dt.isoformat()
+                        except:
+                            pass
+
                     user_data = {
                         "user_id": user.get("Id"),
                         "username": user.get("Name"),
@@ -529,6 +540,8 @@ class EmbyProvider(BaseProvider):
                         "admin": user.get("Policy", {}).get("IsAdministrator", False),
                         "disabled": user.get("Policy", {}).get("IsDisabled", False),
                         "hidden": user.get("Policy", {}).get("IsHidden", False),
+                        "last_activity": last_activity,
+                        "last_login": user.get("LastLoginDate"),
                     }
                     users.append(user_data)
 

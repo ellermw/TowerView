@@ -46,11 +46,13 @@ class PlexProvider(BaseProvider):
     async def _ensure_valid_token(self) -> None:
         """Ensure we have a valid token, using Redis cache to avoid rate limiting"""
         # If we already have an API key/token from credentials, use it
+        # This is the server admin token which has full permissions
         if self.token:
             logger.debug(f"Using existing API key/token for server {self.server_id}")
             return
 
-        # Check Redis cache for valid token
+        # Only use Plex.tv auth if we don't have a server admin token
+        # Check Redis cache for valid Plex.tv user token
         cached_data = token_cache.get_token(self.server_id)
         if cached_data and cached_data.get("token"):
             self.token = cached_data["token"]
@@ -59,7 +61,7 @@ class PlexProvider(BaseProvider):
             logger.debug(f"Using cached Plex.tv token for server {self.server_id} (expires in {remaining:.0f}s)")
             return
 
-        # If we don't have username/password, we can't authenticate
+        # If we don't have username/password, we can't authenticate with Plex.tv
         if not self.username or not self.password:
             logger.debug("No Plex.tv credentials available for authentication")
             return
@@ -338,9 +340,13 @@ class PlexProvider(BaseProvider):
                         session_data["address"] = player_elem.get("address")
                         session_data["location"] = player_elem.get("local") == "1" and "local" or "remote"
 
-                    # Extract Session info
+                    # Extract Session info - IMPORTANT: Get the real session ID for termination
                     session_elem = video.find('Session')
                     if session_elem is not None:
+                        # Store the actual session ID - this is what's needed for termination!
+                        actual_session_id = session_elem.get("id")
+                        if actual_session_id:
+                            session_data["session_id"] = actual_session_id  # Override with real session ID
                         session_data["session_bandwidth"] = session_elem.get("bandwidth")
                         session_data["session_location"] = session_elem.get("location")
 
@@ -698,6 +704,8 @@ class PlexProvider(BaseProvider):
                         "restricted": account.get("restricted") == "1",
                         "protected": account.get("protected") == "1",
                         "admin": account.get("admin") == "1",
+                        "last_activity": None,  # Plex doesn't provide this in the accounts API
+                        "last_login": None,  # Plex doesn't provide this directly
                     }
                     users.append(user_data)
 
@@ -733,7 +741,7 @@ class PlexProvider(BaseProvider):
         except Exception:
             return None
 
-    async def terminate_session(self, provider_session_id: str) -> bool:
+    async def terminate_session(self, provider_session_id: str, message: str = None) -> bool:
         """Terminate a Plex session - requires server admin token or Plex Pass"""
         try:
             # Check if we have any token at all
@@ -784,37 +792,33 @@ class PlexProvider(BaseProvider):
                 # Track which methods reported success
                 methods_attempted = []
 
-                # Method 0: Primary method - Stop playback via transcode session API
-                # This is what Plex Web uses internally
-                if session_info and session_info.get("client_id"):
-                    url0 = f"{base_url}/status/sessions/terminate"
-                    # Use the exact format that Plex Web uses
-                    params0 = {
-                        "sessionId": provider_session_id,
-                        "reason": "Terminated by administrator"
-                    }
-                    logger.debug(f"Attempting Method 0 - Plex Web API terminate: {url0}")
-                    logger.debug(f"Parameters: {params0}")
+                # Method 0: Use the official Plex API endpoint with the correct session ID
+                # This is what Plex Web Dashboard uses - it needs the Session.id not sessionKey!
+                terminate_url = f"{base_url}/status/sessions/terminate"
+                logger.debug(f"Attempting Method 0 - Official Plex terminate endpoint: {terminate_url}")
+                logger.debug(f"Using session ID: {provider_session_id}")
 
-                    try:
-                        response = await client.delete(
-                            url0,
-                            params=params0,
-                            headers={
-                                "X-Plex-Token": self.token,
-                                "X-Plex-Client-Identifier": self.client_id,
-                                "Accept": "application/json"
-                            },
-                            timeout=10.0
-                        )
-                        logger.debug(f"Method 0 Plex Web API attempt - Status: {response.status_code}")
-                        if response.status_code in [200, 202, 204]:
-                            logger.debug("Method 0 (Plex Web API) returned success code")
-                            methods_attempted.append(("Plex Web API", response.status_code))
-                        else:
-                            logger.debug(f"Method 0 failed with status {response.status_code}")
-                    except Exception as e:
-                        logger.debug(f"Method 0 failed: {e}")
+                try:
+                    # Use DELETE with sessionId parameter - this is what works!
+                    # Use provided message or default
+                    reason = message if message else "Terminated by TowerView admin"
+                    response = await client.delete(
+                        terminate_url,
+                        params={"sessionId": provider_session_id, "reason": reason},
+                        headers={
+                            "X-Plex-Token": self.token,
+                            "Accept": "application/json"
+                        },
+                        timeout=10.0
+                    )
+                    logger.debug(f"Method 0 terminate - Status: {response.status_code}")
+                    if response.status_code in [200, 202, 204]:
+                        logger.info("Session termination successful!")
+                        return True
+                    else:
+                        logger.debug(f"Method 0 failed with status {response.status_code}")
+                except Exception as e:
+                    logger.debug(f"Method 0 failed: {e}")
 
                 # Method 1: Direct transcode session termination (most reliable for transcoded content)
                 # This works even without Plex Pass for transcoded sessions
@@ -1036,12 +1040,12 @@ class PlexProvider(BaseProvider):
                 logger.debug(f"Token present: {'Yes' if self.token else 'No'}")
                 logger.debug(f"Client ID found: {session_info.get('client_id') if session_info else 'No'}")
                 logger.debug(f"")
-                logger.debug(f"Possible reasons:")
-                logger.debug(f"1. Server requires Plex Pass admin token (not regular user token)")
-                logger.debug(f"2. Session termination disabled in Plex server settings")
-                logger.debug(f"3. API endpoints changed in newer Plex versions")
-                logger.debug(f"4. Need to use Plex.tv cloud API instead of local API")
-                logger.debug(f"")
+                logger.debug(f"Termination failed - Common reasons:")
+                logger.debug(f"1. Client not controllable (remote control disabled in Plex client)")
+                logger.debug(f"2. DirectPlay sessions require client cooperation to stop")
+                logger.debug(f"3. The /clients endpoint is empty (client not advertising)")
+                logger.debug(f"4. Only transcoded sessions can be forcefully terminated")
+                logger.debug(f"Note: Admin token is valid but client isn't accepting remote commands")
                 logger.debug(f"Note: Tautulli uses server admin token to terminate sessions")
                 logger.info(f"===============================================")
                 return False

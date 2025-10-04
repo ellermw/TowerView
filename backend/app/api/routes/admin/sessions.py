@@ -83,11 +83,18 @@ async def get_server_sessions(
         )
 
 
+from pydantic import BaseModel
+from typing import Optional
+
+class TerminateSessionRequest(BaseModel):
+    message: Optional[str] = None
+
 @router.post("/servers/{server_id}/sessions/{session_id}/terminate")
 async def terminate_session(
     server_id: int,
     session_id: str,
     request: Request,
+    body: Optional[TerminateSessionRequest] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -103,12 +110,20 @@ async def terminate_session(
         )
 
     # Permission checking based on user type
-    if current_user.type in [UserType.admin, UserType.staff, UserType.support]:
-        # Admin/staff can terminate if they own the server
+    if current_user.type == UserType.admin:
+        # Admins can terminate sessions on servers they own
         if server.owner_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to manage this server"
+            )
+    elif current_user.type in [UserType.staff, UserType.support]:
+        # Staff/Support users need specific permission to terminate sessions
+        server_permission = user_service.get_user_server_permission(current_user.id, server_id)
+        if not server_permission or not server_permission.can_terminate_sessions:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to terminate sessions on this server"
             )
     elif current_user.type == UserType.local_user:
         # Local users need specific permission to manage servers
@@ -131,32 +146,66 @@ async def terminate_session(
         logger.info(f"Attempting to terminate session {session_id} on server {server_id} ({server.name})")
         provider = ProviderFactory.create_provider(server, db)
 
-        # For media users, verify they're terminating their own session
-        if current_user.type == UserType.media_user:
-            sessions = await provider.get_current_sessions()
-            session_found = False
-            session_username = None
+        # Get session info BEFORE terminating (for audit log)
+        session_username = "Unknown"
+        session_found = False
+
+        try:
+            sessions = await provider.list_active_sessions()
+            logger.info(f"Found {len(sessions)} active sessions on server {server.name}")
+            logger.info(f"Looking for session_id: {session_id}")
 
             for session in sessions:
-                if session.get("Id") == session_id or session.get("session_id") == session_id:
-                    session_username = session.get("UserName", session.get("username", "")).lower()
+                # Different providers use different field names
+                current_session_id = session.get("session_id") or session.get("Id")
+                logger.debug(f"Checking session {current_session_id} (looking for {session_id})")
+
+                # Debug logging to help diagnose username issues
+                if current_session_id == session_id:
+                    logger.info(f"Found matching session. Available keys: {list(session.keys())}")
+                    logger.info(f"Session data sample - username: {session.get('username')}, UserName: {session.get('UserName')}, user_name: {session.get('user_name')}")
+
+                    # Try various username field names used by different providers
+                    session_username = (
+                        session.get("username") or
+                        session.get("UserName") or
+                        session.get("user_name") or
+                        "Unknown"
+                    )
+                    logger.info(f"Extracted username: {session_username}")
                     session_found = True
+
+                    # For media users, verify they're terminating their own session
+                    if current_user.type == UserType.media_user:
+                        if session_username.lower() != current_user.username.lower():
+                            raise HTTPException(
+                                status_code=status.HTTP_403_FORBIDDEN,
+                                detail="You can only terminate your own sessions"
+                            )
                     break
 
+            # Log if session not found
             if not session_found:
+                logger.warning(f"Session {session_id} not found in active sessions list - will proceed with 'Unknown' username")
+                logger.warning(f"Available session IDs were: {[s.get('session_id') or s.get('Id') for s in sessions]}")
+
+            # If session not found and user is media user, return error
+            if not session_found and current_user.type == UserType.media_user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Session not found"
                 )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Could not get session info before termination: {e}")
+            # Continue anyway - we can still try to terminate
 
-            # Check if it's their session
-            if session_username.lower() != current_user.username.lower():
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You can only terminate your own sessions"
-                )
-
-        success = await provider.terminate_session(session_id)
+        # Pass message to provider if it's a Plex server
+        if server.type.value == "plex" and body and body.message:
+            success = await provider.terminate_session(session_id, message=body.message)
+        else:
+            success = await provider.terminate_session(session_id)
         logger.info(f"Termination result for session {session_id}: {success}")
 
         if not success:
@@ -171,21 +220,9 @@ async def terminate_session(
                 detail=detail
             )
 
-        # Try to get session info for audit log
-        session_info = "Unknown"
-        try:
-            sessions = await provider.get_current_sessions()
-            for session in sessions:
-                if session.get("Id") == session_id or session.get("session_id") == session_id:
-                    username = session.get("UserName", session.get("username", "Unknown"))
-                    session_info = username
-                    break
-        except Exception:
-            pass  # Session info lookup failed, but termination can still proceed
-
-        # Log the action
+        # Log the action with the username we captured earlier
         AuditService.log_session_terminated(
-            db, current_user, session_id, session_info, server.name, request
+            db, current_user, session_id, session_username, server.name, request
         )
 
         return {"message": "Session terminated successfully"}
