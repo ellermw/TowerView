@@ -40,7 +40,7 @@ COPY nginx/nginx.combined.conf /etc/nginx/nginx.conf
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Create necessary directories
-RUN mkdir -p /var/log/supervisor /data
+RUN mkdir -p /var/log/supervisor /data /var/log /var/log/nginx
 
 # Expose ports
 EXPOSE 80 8000

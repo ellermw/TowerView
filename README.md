@@ -102,64 +102,44 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 - Ubuntu 20.04+ or similar Linux distribution
 - Ports 80/8080 available (configurable)
 
-### Deployment Options
-
-TowerView offers two deployment configurations:
-
-#### Option 1: Production (2 Containers) - RECOMMENDED ✅
-- **Simplified architecture**: Database + All-in-one App container
-- **Best for**: Production deployments, personal use, small teams
-- **Benefits**: Easy management, lower resource usage, single update point
-
-#### Option 2: Development (7 Containers)
-- **Microservices architecture**: Separate containers for each service
-- **Best for**: Development, testing, large-scale deployments
-- **Benefits**: Independent scaling, service isolation, hot-reload
-
-### Installation - Production Setup (Recommended)
+### Installation
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/yourusername/TowerView.git
 cd TowerView
 
-# 2. Run the automated deployment script
+# 2. Configure environment (optional)
+cp .env.example .env
+# Edit .env to set DB_PASSWORD, SECRET_KEY, ADMIN_PASSWORD
+
+# 3. Start the containers
+docker-compose up -d
+
+# That's it! TowerView will be available at:
+# - Frontend: http://localhost:8080
+# - Backend API: http://localhost:8080/api
+```
+
+The production build uses a single all-in-one container that includes:
+- Frontend (React + Nginx)
+- Backend (FastAPI)
+- Worker (Celery)
+- Beat Scheduler
+- Redis
+- Served via Nginx on port 8080 (configurable via `HTTP_PORT` in .env)
+
+### Alternative Deployment Method
+
+```bash
+# Using the automated deployment script
 ./deploy.sh
 
-# That's it! The script will:
+# The script will:
 # - Generate secure passwords
 # - Build the containers
 # - Start the services
 # - Display your admin credentials
-```
-
-### Alternative Installation Methods
-
-#### Using Docker Compose Directly
-
-```bash
-# Production setup (2 containers)
-docker-compose -f docker-compose.production.yml up -d
-
-# OR Simple setup (2 containers, for testing)
-docker-compose -f docker-compose.simple.yml up -d
-
-# OR Development setup (7 containers)
-docker-compose up -d
-cd TowerView
-
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your configuration
-
-# 3. Build and start services
-docker-compose build
-docker-compose up -d
-
-# 4. Access the application
-# Main Application: http://your-server:8080
-# API Documentation: http://your-server:8080/api/docs
-# Note: All services are proxied through nginx on port 8080
 ```
 
 ### Default Credentials
@@ -167,9 +147,10 @@ docker-compose up -d
 - Username: `admin`
 - Password: `admin` (will force change on first login)
 
-## 🏗️ Architecture Comparison
+## 🏗️ Architecture
 
-### Production Setup (2 Containers)
+TowerView uses an all-in-one container architecture for simplicity:
+
 ```
 ┌─────────────────────────────────────────┐
 │          All-in-One Container           │
@@ -187,16 +168,6 @@ docker-compose up -d
          │   PostgreSQL DB   │
          │    (Separate)     │
          └──────────────────┘
-```
-
-### Development Setup (7 Containers)
-```
-┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
-│  Nginx   │ │ Frontend │ │  Backend │ │  Worker  │
-└──────────┘ └──────────┘ └──────────┘ └──────────┘
-┌──────────┐ ┌──────────┐ ┌──────────┐
-│   Beat   │ │  Redis   │ │    DB    │
-└──────────┘ └──────────┘ └──────────┘
 ```
 
 ## 📁 Project Structure
@@ -221,12 +192,10 @@ TowerView/
 │   └── package.json
 ├── worker/                         # Celery background tasks
 ├── nginx/                          # Nginx configuration
-├── docker-compose.yml              # Development setup (7 containers)
-├── docker-compose.simple.yml       # Simple setup (2 containers)
-├── docker-compose.production.yml   # Production setup (2 containers)
-├── Dockerfile.combined            # All-in-one container image
-├── supervisord.conf               # Process manager for production
-├── deploy.sh                      # Automated deployment script
+├── docker-compose.yml              # Production setup (2 containers)
+├── Dockerfile.combined             # All-in-one production container
+├── supervisord.conf                # Process manager for production
+├── deploy.sh                       # Automated deployment script
 └── .env.example                   # Environment template
 ```
 

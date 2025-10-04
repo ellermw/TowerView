@@ -5,120 +5,65 @@ services:
     image: postgres:15
     environment:
       POSTGRES_USER: mediaapp
-      POSTGRES_PASSWORD: change_me
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: mediaapp
     volumes:
       - db-data:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"
+    networks:
+      - towerview-network
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mediaapp"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
 
-  redis:
-    image: redis:7
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.combined
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://mediaapp:${DB_PASSWORD}@db:5432/mediaapp
+      REDIS_URL: redis://localhost:6379
+      SECRET_KEY: ${SECRET_KEY}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      # Production settings
+      PYTHONUNBUFFERED: 1
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${HTTP_PORT:-80}:80"        # Web interface
+      # Remove direct backend port in production for security
     volumes:
+      # Optional: Mount for persistent redis data
       - redis-data:/data
-    ports:
-      - "6380:6379"
+      # Optional: Mount for logs
+      - ./logs:/var/log
+    networks:
+      - towerview-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "50m"
+        max-file: "5"
 
-  backend:
-    build: ./backend
-    depends_on:
-      - db
-      - redis
-    environment:
-      DATABASE_URL: postgresql://mediaapp:change_me@db:5432/mediaapp
-      REDIS_URL: redis://redis:6379
-      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-me}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: admin
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  worker:
-    build: ./worker
-    depends_on:
-      - backend
-      - redis
-    environment:
-      DATABASE_URL: postgresql://mediaapp:change_me@db:5432/mediaapp
-      REDIS_URL: redis://redis:6379
-      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-me}
-    volumes:
-      - ./worker:/app
-      - ./backend:/backend
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  worker-beat:
-    build: ./worker
-    depends_on:
-      - backend
-      - redis
-    environment:
-      DATABASE_URL: postgresql://mediaapp:change_me@db:5432/mediaapp
-      REDIS_URL: redis://redis:6379
-      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-me}
-    volumes:
-      - ./worker:/app
-      - ./backend:/backend
-    command: celery -A worker.celery_app beat --loglevel=info
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  frontend:
-    build: ./frontend
-    ports:
-      - "3002:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    environment:
-      - VITE_API_URL=
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "8080:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./frontend/dist:/usr/share/nginx/html:ro
-    depends_on:
-      - backend
-      - frontend
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+networks:
+  towerview-network:
+    driver: bridge
 
 volumes:
   db-data:
