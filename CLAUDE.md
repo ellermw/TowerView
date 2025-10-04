@@ -262,6 +262,15 @@ Version 2.3.2+ includes comprehensive HDR detection across all providers. HDR fi
 - 4K detection supports cinema formats (>= 2000 pixels)
 - Resolution shows actual playing resolution (direct play vs transcoded)
 
+**Transcoding Resolution Detection (Plex):**
+- During transcoding, Plex only provides the transcoded resolution in session data
+- Original resolution is inferred using smart defaults:
+  - 4K libraries: Original assumed to be 4K
+  - 1080p transcode: Assumed from 1080p source (codec conversion more common than 4K downscaling)
+  - Lower quality transcodes: Assumed from 1080p source
+  - Direct play: Uses videoResolution field with height-based fallback
+- Always provides a resolution value (never shows "Unknown" in UI)
+
 See provider implementations for details.
 
 ### Plex OAuth Flow
