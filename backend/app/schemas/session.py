@@ -55,6 +55,8 @@ class LiveSessionResponse(BaseModel):
     library_section: Optional[str] = None
     grandparent_title: Optional[str] = None
     parent_title: Optional[str] = None
+    season_number: Optional[int] = None
+    episode_number: Optional[int] = None
 
     # Device/Player info
     device: Optional[str] = None

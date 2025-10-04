@@ -1166,6 +1166,7 @@ export default function AdminHome() {
                                                       <p className="text-xs text-slate-600 dark:text-slate-400">
                                                         {session.grandparent_title}
                                                         {session.parent_title && ` - ${session.parent_title}`}
+                                                        {session.episode_number && ` - Episode ${session.episode_number}`}
                                                       </p>
                                                     )}
                                                   </div>

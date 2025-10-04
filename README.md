@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-## Version 2.3.14 - Jellyfin Library Management Fix
+## Version 2.3.15 - Enhanced Session Display
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -397,7 +397,19 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.14 (Current)
+### Version 2.3.15 (Current)
+
+- **Enhanced Session Display for TV Shows**:
+  - Added episode number display to active sessions
+  - Backend now captures `season_number` and `episode_number` from Plex API
+  - Updated session schema to include new fields
+  - TV show sessions now display as:
+    - **Line 1 (Episode Title)**: e.g., "The One Where Ross Got High"
+    - **Line 2 (Show - Season - Episode)**: e.g., "Friends - Season 6 - Episode 9"
+  - Improved clarity for tracking which episode users are watching
+  - Works for Plex servers (Emby/Jellyfin support to be added in future updates)
+
+### Version 2.3.14
 
 - **Jellyfin Library Management Fix**:
   - Fixed double-slash URL issue in Jellyfin provider (`//Users/` → `/Users/`)

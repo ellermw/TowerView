@@ -278,6 +278,8 @@ class PlexProvider(BaseProvider):
                         "title": video.get("title"),
                         "grandparent_title": video.get("grandparentTitle"),  # Show name
                         "parent_title": video.get("parentTitle"),  # Season
+                        "season_number": video.get("parentIndex"),  # Season number
+                        "episode_number": video.get("index"),  # Episode number
                         "year": video.get("year"),
                         "summary": video.get("summary"),
                         "content_rating": video.get("contentRating"),

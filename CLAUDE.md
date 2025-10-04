@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TowerView is a unified media server management platform that provides a single administrative interface for managing multiple media servers (Plex, Jellyfin, Emby). It includes real-time monitoring, user management, session control, analytics, and Docker container management via Portainer integration.
 
-**Current Version:** 2.3.14
+**Current Version:** 2.3.15
 
 ## Architecture
 
@@ -273,6 +273,32 @@ Version 2.3.2+ includes comprehensive HDR detection across all providers. HDR fi
 - Always provides a resolution value (never shows "Unknown" in UI)
 
 See provider implementations for details.
+
+### Session Display for TV Shows
+
+Version 2.3.15+ includes enhanced TV show episode display in active sessions:
+
+**Backend Session Fields** (`backend/app/schemas/session.py`):
+- `season_number: Optional[int]` - Season number from provider API
+- `episode_number: Optional[int]` - Episode number from provider API
+- `grandparent_title: Optional[str]` - Show name (e.g., "Friends")
+- `parent_title: Optional[str]` - Season name (e.g., "Season 6")
+- `title: Optional[str]` - Episode title (e.g., "The One Where Ross Got High")
+
+**Plex Provider** (`backend/app/providers/plex.py`):
+- Captures `parentIndex` as `season_number`
+- Captures `index` as `episode_number`
+- These fields are available in the Plex XML API response for episode sessions
+
+**Frontend Display** (`frontend/src/components/admin/AdminHome.tsx`):
+- **Line 1 (Episode Title)**: Shows `session.title` in bold
+- **Line 2 (Context)**: Shows `grandparent_title - parent_title - Episode {episode_number}` in gray
+- Example: "Friends - Season 6 - Episode 9"
+- For movies, only shows the title (no second line)
+
+**Future Enhancements**:
+- Emby/Jellyfin providers currently don't capture episode numbers (to be added)
+- Could add episode air date or other metadata if needed
 
 ### Plex OAuth Flow
 
