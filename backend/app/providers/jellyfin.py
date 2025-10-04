@@ -652,9 +652,12 @@ class JellyfinProvider(BaseProvider):
         """Get user's current library access"""
         try:
             async with httpx.AsyncClient(verify=False) as client:
-                # Get user policy directly
+                # Get full user object which contains the policy
+                user_url = f"{self.base_url}/Users/{provider_user_id}"
+                logger.info(f"Jellyfin fetching user from: {user_url}")
+
                 response = await client.get(
-                    f"{self.base_url}/Users/{provider_user_id}/Policy",
+                    user_url,
                     headers={"Authorization": f"MediaBrowser Token={self.admin_token or self.api_key}"},
                     timeout=10.0
                 )
@@ -662,14 +665,16 @@ class JellyfinProvider(BaseProvider):
                 logger.info(f"Jellyfin get_user_library_access status: {response.status_code}")
 
                 if response.status_code != 200:
-                    logger.error(f"Failed to get Jellyfin user policy {provider_user_id}: {response.text}")
+                    logger.error(f"Failed to get Jellyfin user for {provider_user_id}: status={response.status_code}, response={response.text}")
                     return {"library_ids": [], "all_libraries": False}
 
-                policy = response.json()
+                user = response.json()
+                policy = user.get("Policy", {})
 
-                logger.info(f"Jellyfin user {provider_user_id} policy keys: {list(policy.keys())}")
-                logger.info(f"Jellyfin EnableAllFolders: {policy.get('EnableAllFolders')}")
-                logger.info(f"Jellyfin EnabledFolders: {policy.get('EnabledFolders')}")
+                logger.info(f"Jellyfin user {provider_user_id} has Policy: {bool(policy)}")
+                if policy:
+                    logger.info(f"Jellyfin EnableAllFolders: {policy.get('EnableAllFolders')}")
+                    logger.info(f"Jellyfin EnabledFolders: {policy.get('EnabledFolders')}")
 
                 # Check if user has access to all libraries
                 all_libraries = policy.get("EnableAllFolders", False)

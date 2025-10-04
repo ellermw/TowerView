@@ -36,29 +36,31 @@ async def get_server_libraries(
         )
 
     # Check permissions
-    if current_user.type.value in ["admin", "staff", "support"]:
-        # Admin/staff must own the server
-        if server.owner_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to access this server"
-            )
-    else:
-        # Local users need permission
+    if current_user.type.value == "admin":
+        # Admins have full access to all servers
+        pass
+    elif current_user.type.value in ["staff", "support"]:
+        # Staff/support must have permission for this server
         permission = db.query(UserPermission).filter(
             UserPermission.user_id == current_user.id,
             UserPermission.server_id == server_id
         ).first()
 
-        if not permission or not permission.can_view_servers:
+        if not permission:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to access this server"
             )
+    else:
+        # Media users should not access this endpoint
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this server"
+        )
 
     try:
         provider = ProviderFactory.create_provider(server, db)
-        await provider.initialize()
+        await provider.connect()
 
         # Check if the provider has the list_libraries method
         if hasattr(provider, 'list_libraries'):
@@ -96,25 +98,27 @@ async def get_user_library_access(
 
     # Check permissions
     if current_user.type == UserType.admin:
-        # Admin must own the server
-        if server.owner_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Not authorized")
-    elif current_user.type == UserType.local_user:
-        # Local user needs permission to manage servers
+        # Admins have full access to all servers
+        pass
+    elif current_user.type in [UserType.staff, UserType.support]:
+        # Staff/support need permission to access this server
         permission = db.query(UserPermission).filter(
             UserPermission.user_id == current_user.id,
             UserPermission.server_id == server_id
         ).first()
 
-        if not permission or not permission.can_manage_servers:
-            raise HTTPException(status_code=403, detail="No permission to manage this server")
+        if not permission:
+            raise HTTPException(status_code=403, detail="Not authorized to access this server")
+    else:
+        # Media users should not access this endpoint
+        raise HTTPException(status_code=403, detail="Not authorized")
 
     # Initialize provider and get user's library access
     try:
         logger.info(f"========== ADMIN ROUTE: Getting library access for user {user_id} on server {server.name} (type: {server.type}) ==========")
 
         provider = ProviderFactory.create_provider(server, db)
-        await provider.initialize()
+        await provider.connect()
 
         # Check if the provider has the get_user_library_access method
         if hasattr(provider, 'get_user_library_access'):
@@ -154,9 +158,10 @@ async def set_user_library_access(
 
     # Check permissions (same as get_user_library_access)
     if current_user.type == UserType.admin:
-        if server.owner_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Not authorized")
-    elif current_user.type == UserType.local_user:
+        # Admins have full access to all servers
+        pass
+    elif current_user.type in [UserType.staff, UserType.support]:
+        # Staff/support need permission to manage this server
         permission = db.query(UserPermission).filter(
             UserPermission.user_id == current_user.id,
             UserPermission.server_id == server_id
@@ -164,10 +169,13 @@ async def set_user_library_access(
 
         if not permission or not permission.can_manage_servers:
             raise HTTPException(status_code=403, detail="No permission to manage this server")
+    else:
+        # Media users should not access this endpoint
+        raise HTTPException(status_code=403, detail="Not authorized")
 
     try:
         provider = ProviderFactory.create_provider(server, db)
-        await provider.initialize()
+        await provider.connect()
 
         # Check if the provider has the set_user_library_access method
         if hasattr(provider, 'set_user_library_access'):

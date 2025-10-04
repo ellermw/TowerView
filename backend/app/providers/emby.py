@@ -789,9 +789,12 @@ class EmbyProvider(BaseProvider):
         """Get user's current library access"""
         try:
             async with httpx.AsyncClient(verify=False) as client:
-                # Get user policy directly
+                # Get full user object which contains the policy
+                user_url = f"{self.base_url}/Users/{provider_user_id}"
+                logger.info(f"Emby fetching user from: {user_url}")
+
                 response = await client.get(
-                    f"{self.base_url}/Users/{provider_user_id}/Policy",
+                    user_url,
                     headers={"X-Emby-Token": self.admin_token or self.api_key},
                     timeout=10.0
                 )
@@ -799,20 +802,16 @@ class EmbyProvider(BaseProvider):
                 logger.info(f"Emby get_user_library_access status: {response.status_code}")
 
                 if response.status_code != 200:
-                    logger.error(f"Failed to get Emby user policy {provider_user_id}: {response.text}")
+                    logger.error(f"Failed to get Emby user for {provider_user_id}: status={response.status_code}, response={response.text}")
                     return {"library_ids": [], "all_libraries": False}
 
-                policy = response.json()
+                user = response.json()
+                policy = user.get("Policy", {})
 
-                logger.info(f"Emby user {provider_user_id} policy keys: {list(policy.keys())}")
-                logger.info(f"Emby EnableAllFolders: {policy.get('EnableAllFolders')}")
-                logger.info(f"Emby EnabledFolders: {policy.get('EnabledFolders')}")
-
-                # Also check if there's any other field that might contain library info
-                if 'Configuration' in user:
-                    logger.info(f"Emby user has Configuration: {user.get('Configuration')}")
-                if 'Policy' in user and policy:
-                    logger.info(f"Emby full Policy object: {policy}")
+                logger.info(f"Emby user {provider_user_id} has Policy: {bool(policy)}")
+                if policy:
+                    logger.info(f"Emby EnableAllFolders: {policy.get('EnableAllFolders')}")
+                    logger.info(f"Emby EnabledFolders: {policy.get('EnabledFolders')}")
 
                 # Check if user has access to all libraries
                 all_libraries = policy.get("EnableAllFolders", False)

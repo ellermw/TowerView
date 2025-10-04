@@ -549,7 +549,13 @@ export default function UsersList() {
                       Select which libraries this user can access:
                     </div>
                     <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {libraries.map((library) => (
+                      {libraries
+                        .sort((a, b) => {
+                          const nameA = (a.title || a.name || '').toLowerCase()
+                          const nameB = (b.title || b.name || '').toLowerCase()
+                          return nameA.localeCompare(nameB)
+                        })
+                        .map((library) => (
                         <label
                           key={library.id}
                           className="flex items-center p-3 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"
@@ -568,11 +574,11 @@ export default function UsersList() {
                           />
                           <div className="ml-3 flex-1">
                             <div className="text-sm font-medium text-slate-900 dark:text-white">
-                              {library.name}
+                              {library.title || library.name}
                             </div>
                             {library.type && (
                               <div className="text-xs text-slate-500 dark:text-slate-400">
-                                Type: {library.type}
+                                {library.type}
                               </div>
                             )}
                           </div>

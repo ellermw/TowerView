@@ -591,7 +591,7 @@ async def get_user_library_access(
         logger.info(f"Getting library access for user {user_id} on server {server.name} (type: {server.type})")
 
         provider = ProviderFactory.create_provider(server, db)
-        await provider.initialize()
+        await provider.connect()
 
         # Check if the provider has the get_user_library_access method
         if hasattr(provider, 'get_user_library_access'):
