@@ -141,12 +141,15 @@ async def get_user_library_access(
 async def set_user_library_access(
     server_id: int,
     user_id: str,  # Provider user ID
-    library_data: Dict[str, Any],
     request: Request,
     current_user: User = Depends(get_current_admin_or_local_user),
     db: Session = Depends(get_db)
 ):
     """Set a user's library access on a server"""
+    # Get the JSON body
+    library_data = await request.json()
+    logger.info(f"Received library access update: server_id={server_id}, user_id={user_id}, library_data={library_data}")
+
     server_service = ServerService(db)
     server = server_service.get_server_by_id(server_id)
 
@@ -186,10 +189,21 @@ async def set_user_library_access(
 
             if success:
                 # Log the action
-                AuditService.log_user_library_access_changed(
-                    db, current_user, user_id, server.name,
-                    "all" if all_libraries else f"{len(library_ids)} libraries",
-                    request
+                library_description = "all libraries" if all_libraries else f"{len(library_ids)} libraries"
+                AuditService.log_action(
+                    db=db,
+                    actor=current_user,
+                    action="library_access_changed",
+                    target="user",
+                    target_name=user_id,
+                    details={
+                        "server_name": server.name,
+                        "server_id": server_id,
+                        "library_access": library_description,
+                        "all_libraries": all_libraries,
+                        "library_count": len(library_ids)
+                    },
+                    request=request
                 )
                 return {"success": True, "message": "Library access updated successfully"}
             else:

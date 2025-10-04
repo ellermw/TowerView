@@ -13,6 +13,7 @@ import {
   FolderIcon
 } from '@heroicons/react/24/outline'
 import api from '../../services/api'
+import toast from 'react-hot-toast'
 
 interface ServerUser {
   user_id: string
@@ -214,16 +215,29 @@ export default function UsersList() {
     setLibrariesSaving(true)
 
     try {
-      await api.post(
+      // Check if all libraries are selected
+      const allLibrariesSelected = selectedLibraries.length === libraries.length
+
+      const payload = {
+        library_ids: selectedLibraries,
+        all_libraries: allLibrariesSelected
+      }
+
+      console.log('Saving library access:', payload)
+
+      const response = await api.post(
         `/admin/servers/${selectedUser.server_id}/users/${selectedUser.user_id}/libraries`,
-        selectedLibraries
+        payload
       )
 
+      console.log('Save response:', response.data)
+
+      toast.success('Library access updated successfully')
       setIsLibraryModalOpen(false)
       setSelectedUser(null)
-      // Show success message
-    } catch (_error: any) {
-      // Error handled silently
+    } catch (error: any) {
+      console.error('Save failed:', error.response?.data || error.message)
+      toast.error(error.response?.data?.detail || 'Failed to update library access')
     } finally {
       setLibrariesSaving(false)
     }

@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-## Version 2.3.12 - Plex OAuth Fix
+## Version 2.3.13 - Library Management Fix
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -397,7 +397,21 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.12 (Current)
+### Version 2.3.13 (Current)
+
+- **Library Management Feature - Complete Implementation**:
+  - Added library access management for Emby and Jellyfin users
+  - Implemented `set_user_library_access()` method in Emby and Jellyfin providers
+  - Fixed duplicate API endpoint conflict (removed conflicting route from users.py)
+  - Libraries now properly pre-check based on current user access
+  - Libraries sorted alphabetically by name for better UX
+  - Added success toast notification when saving library changes
+  - Modal now auto-closes after successful save
+  - Proper error handling with toast notifications
+  - Fixed audit logging to use correct AuditService.log_action() method
+  - Comprehensive library management now working for all provider types
+
+### Version 2.3.12
 
 - **Plex OAuth Authentication Fix**:
   - Fixed OAuth URL format to use `https://app.plex.tv/auth#?` (hash-based parameters required by Plex)

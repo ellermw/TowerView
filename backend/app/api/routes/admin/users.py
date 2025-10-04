@@ -610,43 +610,4 @@ async def get_user_library_access(
         return {"library_ids": [], "all_libraries": False}
 
 
-@router.post("/servers/{server_id}/users/{user_id}/libraries")
-async def set_user_library_access(
-    server_id: int,
-    user_id: str,  # Provider user ID
-    library_ids: List[str],
-    current_user: User = Depends(get_current_admin_or_local_user),
-    db: Session = Depends(get_db)
-):
-    """Set library access for a user"""
-    # Get server
-    server = db.query(Server).filter(Server.id == server_id).first()
-    if not server:
-        raise HTTPException(status_code=404, detail="Server not found")
-
-    # Check permissions
-    if current_user.type != UserType.admin:
-        permission = db.query(UserPermission).filter(
-            UserPermission.user_id == current_user.id,
-            UserPermission.server_id == server_id
-        ).first()
-
-        if not permission or not permission.can_manage_servers:
-            raise HTTPException(status_code=403, detail="No permission to manage this server")
-
-    # Get provider and set library access
-    provider = ProviderFactory.create_provider(server, db)
-
-    success = await provider.set_library_access(user_id, library_ids)
-
-    if not success:
-        raise HTTPException(status_code=400, detail="Failed to set library access")
-
-    # Log the action
-    AuditService.log_custom(
-        db, current_user, "set_library_access",
-        details=f"Set library access for user {user_id} on server {server.name}",
-        request=None
-    )
-
-    return {"success": True, "message": "Library access updated"}
+# Removed duplicate endpoint - library management is now handled in libraries.py

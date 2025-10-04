@@ -861,6 +861,55 @@ class EmbyProvider(BaseProvider):
         except Exception:
             return False
 
+    async def set_user_library_access(self, provider_user_id: str, library_ids: List[str], all_libraries: bool = False) -> bool:
+        """Set library access for Emby user with all_libraries support"""
+        try:
+            async with httpx.AsyncClient(verify=False) as client:
+                # Get current user to access the full Policy object
+                user_url = f"{self.base_url}/Users/{provider_user_id}"
+                response = await client.get(
+                    user_url,
+                    headers={"X-Emby-Token": self.admin_token or self.api_key},
+                    timeout=10.0
+                )
+
+                if response.status_code != 200:
+                    logger.error(f"Failed to get Emby user {provider_user_id}: {response.status_code}")
+                    return False
+
+                user = response.json()
+                policy = user.get("Policy", {})
+
+                # Update library access settings
+                policy["EnableAllFolders"] = all_libraries
+                if not all_libraries:
+                    policy["EnabledFolders"] = library_ids
+                else:
+                    # When all libraries are enabled, clear the specific list
+                    policy["EnabledFolders"] = []
+
+                # Update the policy
+                policy_url = f"{self.base_url}/Users/{provider_user_id}/Policy"
+                response = await client.post(
+                    policy_url,
+                    json=policy,
+                    headers={"X-Emby-Token": self.admin_token or self.api_key},
+                    timeout=10.0
+                )
+
+                if response.status_code in [200, 204]:
+                    logger.info(f"Successfully updated library access for Emby user {provider_user_id}")
+                    return True
+                else:
+                    logger.error(f"Failed to update Emby user policy: {response.status_code} - {response.text}")
+                    return False
+
+        except Exception as e:
+            logger.error(f"Exception setting Emby library access: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
+
     async def get_media_info(self, provider_media_id: str) -> Optional[Dict[str, Any]]:
         """Get Emby media information"""
         try:

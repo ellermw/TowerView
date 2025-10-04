@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TowerView is a unified media server management platform that provides a single administrative interface for managing multiple media servers (Plex, Jellyfin, Emby). It includes real-time monitoring, user management, session control, analytics, and Docker container management via Portainer integration.
 
-**Current Version:** 2.3.11
+**Current Version:** 2.3.13
 
 ## Architecture
 
@@ -284,9 +284,36 @@ Plex supports both direct username/password and OAuth authentication. OAuth flow
 
 Implemented in `backend/app/api/routes/auth.py` and `frontend/src/components/MediaLoginModal.tsx`.
 
-### Library Access Pre-checking
+### Library Access Management
 
-For Emby/Jellyfin users, library access is pre-checked based on current user permissions before displaying the library management modal. This prevents users from seeing libraries they don't have access to.
+**Full Implementation** for Emby and Jellyfin users:
+
+- **Frontend** (`frontend/src/components/admin/UsersList.tsx`):
+  - Libraries button in user management interface
+  - Modal displays all available libraries sorted alphabetically
+  - Pre-checks libraries based on current user access
+  - Success toast notification on save
+  - Auto-closes modal after successful save
+  - Error handling with toast notifications
+
+- **Backend** (`backend/app/api/routes/admin/libraries.py`):
+  - `GET /servers/{server_id}/libraries` - List all libraries
+  - `GET /servers/{server_id}/users/{user_id}/libraries` - Get user's current access
+  - `POST /servers/{server_id}/users/{user_id}/libraries` - Set library access
+  - Audit logging for all library access changes
+
+- **Provider Methods** (Emby/Jellyfin):
+  - `list_libraries()` - Get all libraries from the server
+  - `get_user_library_access(user_id)` - Get current library access (returns `{library_ids: [], all_libraries: bool}`)
+  - `set_user_library_access(user_id, library_ids, all_libraries)` - Update library access
+  - Uses Emby/Jellyfin Policy API (`EnableAllFolders` and `EnabledFolders` fields)
+
+**Important Notes**:
+- Library IDs are strings in Emby/Jellyfin
+- `all_libraries=True` means user has access to all libraries (EnabledFolders cleared)
+- `all_libraries=False` means user has access only to specified library_ids
+- Libraries sorted alphabetically by name for better UX
+- Audit logs track changes with server name, library count, and all_libraries status
 
 ## Common Patterns
 
