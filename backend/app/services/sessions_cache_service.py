@@ -197,6 +197,17 @@ class SessionsCacheService:
                 else:
                     self.last_error = None
 
+            # Check for and terminate 4K transcodes if enabled
+            try:
+                from ..services.transcode_termination_service import TranscodeTerminationService
+                terminated_count = await TranscodeTerminationService.check_and_terminate_4k_transcodes(
+                    all_sessions, db
+                )
+                if terminated_count > 0:
+                    logger.info(f"Auto-terminated {terminated_count} 4K transcode sessions")
+            except Exception as e:
+                logger.error(f"Error in auto-termination check: {e}")
+
             logger.info(f"Cached {len(all_sessions)} sessions from {len(servers)} servers")
 
         except Exception as e:

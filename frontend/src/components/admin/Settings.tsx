@@ -14,7 +14,8 @@ import {
   ExclamationTriangleIcon,
   CubeIcon,
   WifiIcon,
-  ClockIcon
+  ClockIcon,
+  VideoCameraSlashIcon
 } from '@heroicons/react/24/outline'
 import api from '../../services/api'
 import SyncSettings from './SyncSettings'
@@ -50,6 +51,12 @@ interface PortainerIntegration {
   updated_at?: string
 }
 
+interface TranscodeSettings {
+  auto_terminate_4k_enabled: boolean
+  auto_terminate_message: string
+  whitelist_usernames: string[]
+}
+
 export default function Settings() {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState('general')
@@ -71,6 +78,13 @@ export default function Settings() {
   const [plexTerminationMessage, setPlexTerminationMessage] = useState(
     localStorage.getItem('plexTerminationMessage') || 'Your stream has been terminated by an administrator'
   )
+
+  // Transcode settings state
+  const [transcodeAutoTerminateEnabled, setTranscodeAutoTerminateEnabled] = useState(false)
+  const [transcodeTerminationMessage, setTranscodeTerminationMessage] = useState(
+    '4K transcoding is not allowed. Please use a client that supports direct play or choose a lower quality version.'
+  )
+  const [transcodeWhitelist, setTranscodeWhitelist] = useState<string>('')
 
   // Fetch available servers
   const { data: servers = [] } = useQuery<Server[]>(
@@ -109,6 +123,19 @@ export default function Settings() {
     }
   )
 
+  // Fetch transcode settings
+  const { data: transcodeSettings } = useQuery<TranscodeSettings>(
+    'transcode-settings',
+    () => api.get('/settings/transcode/settings').then(res => res.data),
+    {
+      onSuccess: (data) => {
+        setTranscodeAutoTerminateEnabled(data.auto_terminate_4k_enabled)
+        setTranscodeTerminationMessage(data.auto_terminate_message)
+        setTranscodeWhitelist(data.whitelist_usernames.join(', '))
+      }
+    }
+  )
+
   // Save site name mutation
   const saveSiteName = useMutation(
     (name: string) => api.post('/settings/site', { site_name: name }),
@@ -123,6 +150,31 @@ export default function Settings() {
       },
       onError: () => {
         toast.error('Failed to save site name')
+      }
+    }
+  )
+
+  // Save transcode settings mutation
+  const saveTranscodeSettings = useMutation(
+    () => {
+      const whitelistArray = transcodeWhitelist
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => s.length > 0)
+
+      return api.put('/settings/transcode/settings', {
+        auto_terminate_4k_enabled: transcodeAutoTerminateEnabled,
+        auto_terminate_message: transcodeTerminationMessage,
+        whitelist_usernames: whitelistArray
+      })
+    },
+    {
+      onSuccess: () => {
+        toast.success('Transcode settings saved successfully')
+        queryClient.invalidateQueries('transcode-settings')
+      },
+      onError: () => {
+        toast.error('Failed to save transcode settings')
       }
     }
   )
@@ -247,6 +299,17 @@ export default function Settings() {
         >
           <ClockIcon className="h-5 w-5" />
           <span>Sync & Cache</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('transcode')}
+          className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+            activeTab === 'transcode'
+              ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <VideoCameraSlashIcon className="h-5 w-5" />
+          <span>Transcode</span>
         </button>
       </div>
 
@@ -654,6 +717,120 @@ export default function Settings() {
 
       {/* Sync & Cache Tab Content */}
       {activeTab === 'sync' && <SyncSettings />}
+
+      {/* Transcode Tab Content */}
+      {activeTab === 'transcode' && (
+        <div className="space-y-6">
+          <div className="card">
+            <div className="card-body">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+                4K Transcode Auto-Termination
+              </h2>
+
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                Automatically terminate streams that are transcoding from 4K to 1080p or lower resolutions.
+                This helps preserve server resources and encourages users to use direct play or lower quality versions.
+              </p>
+
+              <div className="space-y-6">
+                {/* Enable/Disable Toggle */}
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Enable Auto-Termination
+                    </label>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                      When enabled, 4K transcodes to 1080p or below will be automatically terminated
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setTranscodeAutoTerminateEnabled(!transcodeAutoTerminateEnabled)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${
+                      transcodeAutoTerminateEnabled ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        transcodeAutoTerminateEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Termination Message */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Termination Message
+                  </label>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
+                    Message shown to users when their 4K transcode is terminated
+                  </p>
+                  <textarea
+                    value={transcodeTerminationMessage}
+                    onChange={(e) => setTranscodeTerminationMessage(e.target.value)}
+                    rows={3}
+                    className="input w-full"
+                    placeholder="Enter the message to display to users..."
+                  />
+                </div>
+
+                {/* Whitelist */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Whitelisted Users
+                  </label>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
+                    Comma-separated list of usernames excluded from auto-termination
+                  </p>
+                  <input
+                    type="text"
+                    value={transcodeWhitelist}
+                    onChange={(e) => setTranscodeWhitelist(e.target.value)}
+                    className="input w-full"
+                    placeholder="username1, username2, username3"
+                  />
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                    Example: admin, vip_user, family_member
+                  </p>
+                </div>
+
+                {/* Save Button */}
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => saveTranscodeSettings.mutate()}
+                    disabled={saveTranscodeSettings.isLoading}
+                    className="btn btn-primary"
+                  >
+                    {saveTranscodeSettings.isLoading ? 'Saving...' : 'Save Settings'}
+                  </button>
+                </div>
+
+                {/* Info Box */}
+                {transcodeAutoTerminateEnabled && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                    <div className="flex">
+                      <div className="flex-shrink-0">
+                        <ExclamationTriangleIcon className="h-5 w-5 text-blue-400" />
+                      </div>
+                      <div className="ml-3">
+                        <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                          Auto-Termination Active
+                        </h3>
+                        <div className="mt-2 text-sm text-blue-700 dark:text-blue-300">
+                          <p>
+                            The system will check for 4K transcodes every 2 seconds and terminate any streams
+                            transcoding from 4K to 1080p or lower resolutions.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
