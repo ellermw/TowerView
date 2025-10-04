@@ -94,9 +94,12 @@ async def initiate_plex_oauth(request: Request):
 
         data = response.json()
 
-        # Create the auth URL - use the correct OAuth format without hash
-        # The forwardUrl parameter helps Plex know this is an OAuth flow
-        auth_app_url = f"https://app.plex.tv/auth?clientID={client_id}&code={data['code']}&context%5Bdevice%5D%5Bproduct%5D=TowerView&forwardUrl={frontend_url}"
+        # Create the auth URL - use the correct OAuth format
+        # The forwardUrl tells Plex where to redirect after authentication
+        # Redirect to /oauth/callback which will show success and auto-close
+        # Adding #! at the end tells Plex to close the window automatically after redirecting
+        callback_url = f"{frontend_url}/oauth/callback"
+        auth_app_url = f"https://app.plex.tv/auth?clientID={client_id}&code={data['code']}&context%5Bdevice%5D%5Bproduct%5D=TowerView&forwardUrl={callback_url}%23!"
 
         return PlexOAuthInitResponse(
             pin_id=str(data["id"]),
