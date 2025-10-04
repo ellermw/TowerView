@@ -96,10 +96,20 @@ async def initiate_plex_oauth(request: Request):
 
         # Create the auth URL - use the correct OAuth format
         # The forwardUrl tells Plex where to redirect after authentication
-        # Redirect to /oauth/callback which will show success and auto-close
-        # Adding #! at the end tells Plex to close the window automatically after redirecting
+        # IMPORTANT: Plex requires the URL to use #? (hash-based parameters) not just ?
+        import urllib.parse
         callback_url = f"{frontend_url}/oauth/callback"
-        auth_app_url = f"https://app.plex.tv/auth?clientID={client_id}&code={data['code']}&context%5Bdevice%5D%5Bproduct%5D=TowerView&forwardUrl={callback_url}%23!"
+        # Build the query parameters
+        params = {
+            'clientID': client_id,
+            'code': data['code'],
+            'forwardUrl': callback_url,
+            'context[device][product]': 'TowerView'
+        }
+        # URL encode the parameters
+        query_string = urllib.parse.urlencode(params)
+        # Use #? format required by Plex web app
+        auth_app_url = f"https://app.plex.tv/auth#?{query_string}"
 
         return PlexOAuthInitResponse(
             pin_id=str(data["id"]),
@@ -210,11 +220,14 @@ async def authenticate_media_user(
         # Plex OAuth authentication
         logger.info("Processing Plex OAuth authentication")
         # Get user's Plex servers
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Generate a client identifier for this request
+            client_id = str(uuid.uuid4())
             servers_response = await client.get(
                 "https://plex.tv/api/v2/resources",
                 headers={
                     "X-Plex-Token": auth_data.auth_token,
+                    "X-Plex-Client-Identifier": client_id,
                     "Accept": "application/json"
                 },
                 params={
@@ -223,7 +236,10 @@ async def authenticate_media_user(
                 }
             )
 
+            logger.info(f"Plex resources response: status={servers_response.status_code}, body={servers_response.text[:500]}")
+
             if servers_response.status_code != 200:
+                logger.error(f"Failed to get Plex resources: {servers_response.status_code} - {servers_response.text}")
                 raise HTTPException(status_code=401, detail="Invalid Plex token")
 
             resources = servers_response.json()
@@ -251,6 +267,7 @@ async def authenticate_media_user(
                             "https://plex.tv/api/v2/user",
                             headers={
                                 "X-Plex-Token": auth_data.auth_token,
+                                "X-Plex-Client-Identifier": client_id,
                                 "Accept": "application/json"
                             }
                         )

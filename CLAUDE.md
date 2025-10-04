@@ -428,15 +428,31 @@ Container IDs may have changed. System auto-syncs every 5 minutes, or manually s
 - Verify token has admin permissions
 - Local sessions may not be terminable remotely
 
-### Plex OAuth Stuck on Loading Screen
-- **Cause**: OAuth redirect URL (forwardUrl) doesn't match your frontend URL
-- **Solution**: Auto-detection from request headers (works for all users accessing via their own domain)
-- **How it works**:
-  - Each user's browser automatically sends their access URL (e.g., `https://view.tower-server.com`) in request headers
-  - Backend extracts this from `Origin` or `Referer` header
-  - No configuration needed - works automatically for each user's domain
-- **Debug**: Check backend logs for "Plex OAuth: Using Origin header for forwardUrl" to verify detection
-- **Manual Override** (rarely needed): Set `FRONTEND_URL` environment variable only if auto-detection fails
+### Plex OAuth Issues
+
+**Fixed in v2.3.12**: Plex OAuth now works correctly with proper URL format and required headers.
+
+**OAuth Flow**:
+1. Frontend requests PIN from backend (`/api/auth/media/oauth/plex/init`)
+2. Backend generates PIN and returns OAuth URL with `#?` format (required by Plex web app)
+3. User authorizes in Plex, which redirects to `/oauth/callback`
+4. Frontend polls for PIN completion every 2 seconds
+5. When authenticated, stops polling and calls `/api/auth/media/authenticate` with the token
+6. Backend validates token and matches user to configured Plex servers
+
+**Key Implementation Details**:
+- OAuth URL format: `https://app.plex.tv/auth#?clientID=...&code=...&forwardUrl=...` (note `#?` not `?`)
+- All Plex API calls require `X-Plex-Client-Identifier` header
+- Frontend URL auto-detected from `Origin` or `Referer` headers (no configuration needed)
+- Manual override available via `FRONTEND_URL` environment variable if auto-detection fails
+- Polling stops immediately upon successful authentication to prevent concurrent requests
+- PIN expires 10 seconds after authorization (tight window requires efficient handling)
+
+**Troubleshooting**:
+- If stuck on Plex logo screen: Check that OAuth URL uses `#?` format (backend logs show generated URL)
+- If "Invalid Plex token" error: Ensure `X-Plex-Client-Identifier` header is present in all Plex API requests
+- If PIN expired error: Check network latency; authentication must complete within 10 seconds of authorization
+- Debug: Check backend logs for "Plex OAuth: Using Origin header for forwardUrl" to verify URL detection
 
 ### Bandwidth Graph Issues
 - Fixed in v2.3.6: Y-axis now properly scales to show all server bandwidth ranges

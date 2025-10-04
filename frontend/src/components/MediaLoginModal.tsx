@@ -23,6 +23,7 @@ export default function MediaLoginModal({ isOpen, onClose, provider, onSuccess }
   const [plexClientId, setPlexClientId] = useState('')
   const [checkingPlex, setCheckingPlex] = useState(false)
   const [plexAuthOpened, setPlexAuthOpened] = useState(false)
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
 
   // Initialize Plex OAuth when modal opens for Plex
   useEffect(() => {
@@ -36,6 +37,7 @@ export default function MediaLoginModal({ isOpen, onClose, provider, onSuccess }
       setPlexClientId('')
       setCheckingPlex(false)
       setPlexAuthOpened(false)
+      setIsAuthenticating(false)
     }
   }, [isOpen, provider])
 
@@ -43,8 +45,10 @@ export default function MediaLoginModal({ isOpen, onClose, provider, onSuccess }
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null
 
-    if (plexPinId && checkingPlex && plexAuthOpened) {
+    if (plexPinId && checkingPlex && plexAuthOpened && !isAuthenticating) {
       interval = setInterval(async () => {
+        if (isAuthenticating) return // Skip if already processing
+
         try {
           const response = await api.post('/auth/media/oauth/plex/check', {
             pin_id: plexPinId,
@@ -52,21 +56,32 @@ export default function MediaLoginModal({ isOpen, onClose, provider, onSuccess }
           })
 
           if (response.data.authenticated) {
-            // OAuth complete - authenticate with our backend
-            const authResponse = await api.post('/auth/media/authenticate', {
-              provider: 'plex',
-              auth_token: response.data.auth_token
-            })
-
+            // Stop polling immediately and set authenticating flag
+            if (interval) clearInterval(interval)
             setCheckingPlex(false)
-            toast.success('Successfully logged in with Plex!')
-            onSuccess(authResponse.data)
-            // Don't close the modal - let onSuccess handle navigation
+            setIsAuthenticating(true)
+
+            try {
+              // OAuth complete - authenticate with our backend
+              const authResponse = await api.post('/auth/media/authenticate', {
+                provider: 'plex',
+                auth_token: response.data.auth_token
+              })
+
+              toast.success('Successfully logged in with Plex!')
+              onSuccess(authResponse.data)
+              // Don't close the modal - let onSuccess handle navigation
+            } catch (authError: any) {
+              setIsAuthenticating(false)
+              toast.error(authError.response?.data?.detail || 'Authentication failed. Please try again.')
+              setPlexAuthOpened(false)
+            }
           }
         } catch (error: any) {
           // Handle specific error cases
           if (error.response?.status === 404 || error.response?.status === 410) {
             // PIN expired or not found
+            if (interval) clearInterval(interval)
             setCheckingPlex(false)
             setPlexAuthOpened(false)
             toast.error('Authentication PIN expired. Generating a new PIN...')
@@ -75,12 +90,15 @@ export default function MediaLoginModal({ isOpen, onClose, provider, onSuccess }
             setPlexPinCode('')
             setPlexAuthUrl('')
             setPlexClientId('')
+            setIsAuthenticating(false)
             // Automatically reinitialize OAuth
             setTimeout(() => initiatePlexOAuth(), 1000)
           } else if (error.response?.status === 400) {
             // Other authentication errors
+            if (interval) clearInterval(interval)
             setCheckingPlex(false)
             setPlexAuthOpened(false)
+            setIsAuthenticating(false)
             toast.error(error.response?.data?.detail || 'Authentication failed. Please try again.')
           }
           // For other errors, continue polling
@@ -91,7 +109,7 @@ export default function MediaLoginModal({ isOpen, onClose, provider, onSuccess }
     return () => {
       if (interval) clearInterval(interval)
     }
-  }, [plexPinId, plexClientId, checkingPlex, plexAuthOpened])
+  }, [plexPinId, plexClientId, checkingPlex, plexAuthOpened, isAuthenticating])
 
   const initiatePlexOAuth = async () => {
     try {

@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-### Version 2.3.11 - Analytics Page
+### Version 2.3.12 - Plex OAuth Fix
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -86,12 +86,13 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 - Complete access to all TowerView features based on role permissions
 - Role-based access control with hierarchical permissions
 
-**Media User Authentication**: ✅ Now working!
-- **Plex**: Supports both direct username/password and OAuth authentication
+**Media User Authentication**: ✅ Fully working!
+- **Plex**: Supports both direct username/password and OAuth authentication (OAuth fixed in v2.3.12)
 - **Emby**: Direct authentication with username and password
 - **Jellyfin**: Direct authentication with username and password
 - Smart server selection automatically matches users to their correct servers
 - Seamless login experience for media server users
+- OAuth uses proper `#?` URL format and required Plex headers
 
 ## 🚀 Quick Start
 
@@ -396,7 +397,19 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.11 (Current)
+### Version 2.3.12 (Current)
+
+- **Plex OAuth Authentication Fix**:
+  - Fixed OAuth URL format to use `https://app.plex.tv/auth#?` (hash-based parameters required by Plex)
+  - Added required `X-Plex-Client-Identifier` header to all Plex API requests
+  - Fixed "Invalid Plex token" error by including client identifier in resource and user API calls
+  - Improved polling mechanism to prevent concurrent authentication requests
+  - Added `isAuthenticating` state flag to stop polling immediately upon success
+  - Enhanced error logging for better OAuth troubleshooting
+  - Plex OAuth now works reliably within the 10-second PIN expiry window
+  - Updated CLAUDE.md with comprehensive OAuth flow documentation
+
+### Version 2.3.11
 
 - **Analytics Page**:
   - New dedicated Analytics page accessible from navigation bar
