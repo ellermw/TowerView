@@ -6,6 +6,7 @@ import LocalUsersManagement from '../components/admin/LocalUsersManagement'
 import Analytics from '../components/admin/Analytics'
 import AuditLogs from '../components/admin/AuditLogs'
 import Settings from '../components/admin/Settings'
+import WatchHistory from '../components/admin/WatchHistory'
 import ErrorBoundary from '../components/ErrorBoundary'
 
 export default function AdminDashboard() {
@@ -15,6 +16,7 @@ export default function AdminDashboard() {
         <Route path="/" element={<AdminHome />} />
       <Route path="/servers" element={<UnifiedServerManagement />} />
       <Route path="/users" element={<UsersList />} />
+      <Route path="/users/:userId/watch-history" element={<WatchHistory />} />
       <Route path="/local-users" element={<LocalUsersManagement />} />
       <Route path="/analytics" element={<Analytics />} />
       <Route path="/audit" element={<AuditLogs />} />

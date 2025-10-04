@@ -338,6 +338,8 @@ class JellyfinProvider(BaseProvider):
                         # For now, use available data
                         session_data["grandparent_title"] = item.get("SeriesName", "Unknown Series")
                         session_data["parent_title"] = f"Season {item.get('ParentIndexNumber', '?')}"
+                        session_data["season_number"] = item.get("ParentIndexNumber")
+                        session_data["episode_number"] = item.get("IndexNumber")
 
                     sessions.append(session_data)
                     logger.debug(f"Added session: {media_title} ({media_type})")

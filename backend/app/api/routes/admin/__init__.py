@@ -11,6 +11,7 @@ from .users import router as users_router
 from .analytics import router as analytics_router
 from .libraries import router as libraries_router
 from .audit_logs import router as audit_logs_router
+from .watch_history import router as watch_history_router
 
 # Create main admin router
 router = APIRouter()
@@ -22,3 +23,4 @@ router.include_router(users_router, tags=["Users"])
 router.include_router(analytics_router, tags=["Analytics"])
 router.include_router(libraries_router, tags=["Libraries"])
 router.include_router(audit_logs_router, tags=["Audit Logs"])
+router.include_router(watch_history_router, tags=["Watch History"])

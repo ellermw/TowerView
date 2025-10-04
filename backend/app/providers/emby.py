@@ -368,6 +368,8 @@ class EmbyProvider(BaseProvider):
                     if media_type == "episode":
                         session_data["grandparent_title"] = item.get("SeriesName", "Unknown Series")
                         session_data["parent_title"] = f"Season {item.get('ParentIndexNumber', '?')}"
+                        session_data["season_number"] = item.get("ParentIndexNumber")
+                        session_data["episode_number"] = item.get("IndexNumber")
                         # Build full title
                         title_parts = []
                         if session_data["grandparent_title"]:

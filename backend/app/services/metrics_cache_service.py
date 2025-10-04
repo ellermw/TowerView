@@ -82,11 +82,10 @@ class MetricsCacheService:
                 return
 
             url = portainer_integration.url
-            api_token = portainer_integration.api_token
             endpoint_id = portainer_integration.endpoint_id or 2
 
-            if not url or not api_token:
-                logger.debug("No Portainer URL or API token configured")
+            if not url:
+                logger.debug("No Portainer URL configured")
                 return
 
             # Collect metrics for each server
@@ -96,6 +95,11 @@ class MetricsCacheService:
             container_mappings = portainer_integration.container_mappings or {}
 
             async with PortainerService(db) as portainer:
+                # Get a fresh token (will auto-refresh if expired)
+                api_token = await portainer._get_fresh_token(portainer_integration)
+                if not api_token:
+                    logger.debug("Failed to get Portainer API token")
+                    return
                 # Get all containers to resolve short IDs to full IDs
                 all_containers = await portainer.get_containers(url, api_token, endpoint_id)
                 container_id_map = {}

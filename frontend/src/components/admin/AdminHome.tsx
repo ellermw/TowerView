@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react'
 import { useQuery, useMutation } from 'react-query'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   ServerIcon,
@@ -196,6 +197,7 @@ interface GPUStatus {
 }
 
 export default function AdminHome() {
+  const navigate = useNavigate()
   const { user: currentUser } = useAuthStore()
   const { hasPermission, isAdmin } = usePermissions()
 
@@ -1194,7 +1196,19 @@ export default function AdminHome() {
                                                 <div className="space-y-2 text-xs text-slate-600 dark:text-slate-400">
                                                   <div className="flex justify-between">
                                                     <span>Username:</span>
-                                                    <span className="font-medium text-slate-900 dark:text-white">{maskUsername(session.username || 'Unknown')}</span>
+                                                    {session.user_id ? (
+                                                      <button
+                                                        onClick={(e) => {
+                                                          e.stopPropagation()
+                                                          navigate(`/admin/users/${session.user_id}/watch-history`)
+                                                        }}
+                                                        className="font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                                                      >
+                                                        {maskUsername(session.username || 'Unknown')}
+                                                      </button>
+                                                    ) : (
+                                                      <span className="font-medium text-slate-900 dark:text-white">{maskUsername(session.username || 'Unknown')}</span>
+                                                    )}
                                                   </div>
                                                   <div className="flex justify-between">
                                                     <span>Device:</span>

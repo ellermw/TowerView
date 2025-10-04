@@ -208,6 +208,18 @@ class SessionsCacheService:
             except Exception as e:
                 logger.error(f"Error in auto-termination check: {e}")
 
+            # Sync watch history from Plex servers (every 10th poll = every 20 seconds)
+            if not hasattr(self, '_history_poll_counter'):
+                self._history_poll_counter = 0
+            self._history_poll_counter += 1
+
+            if self._history_poll_counter >= 10:
+                self._history_poll_counter = 0
+                try:
+                    await self._sync_watch_history(servers, db)
+                except Exception as e:
+                    logger.error(f"Error syncing watch history: {e}")
+
             logger.info(f"Cached {len(all_sessions)} sessions from {len(servers)} servers")
 
         except Exception as e:
@@ -243,30 +255,109 @@ class SessionsCacheService:
             logger.error(f"Failed to fetch sessions from server {server.name}: {e}")
             raise
 
+    async def _sync_watch_history(self, servers, db):
+        """Sync watch history from Plex servers to capture missed sessions"""
+        from ..providers.factory import ProviderFactory
+        from ..models.playback_analytics import PlaybackEvent
+
+        for server in servers:
+            # Only sync history for Plex servers
+            if server.type.value != 'plex':
+                continue
+
+            try:
+                provider = ProviderFactory.create_provider(server, db)
+
+                # Check if provider has get_watch_history method
+                if not hasattr(provider, 'get_watch_history'):
+                    continue
+
+                # Fetch last 1 hour of history
+                history_items = await provider.get_watch_history(hours=1)
+
+                logger.info(f"Processing {len(history_items)} history items from {server.name}")
+
+                for item in history_items:
+                    try:
+                        # Check if we already have this event
+                        existing = db.query(PlaybackEvent).filter(
+                            PlaybackEvent.server_id == server.id,
+                            PlaybackEvent.provider_media_id == item.get('media_id'),
+                            PlaybackEvent.username == item.get('username')
+                        ).order_by(PlaybackEvent.updated_at.desc()).first()
+
+                        # If event exists and was updated recently (within 2 hours), skip
+                        if existing and (datetime.utcnow() - existing.updated_at).total_seconds() < 7200:
+                            continue
+
+                        # Create new playback event from history
+                        new_event = PlaybackEvent(
+                            server_id=server.id,
+                            provider_session_id=item.get('session_id'),
+                            provider_user_id=item.get('user_id'),
+                            provider_media_id=item.get('media_id'),
+                            username=item.get('username'),
+                            media_title=item.get('media_title'),
+                            media_type=item.get('media_type', 'unknown'),
+                            grandparent_title=item.get('grandparent_title'),
+                            parent_title=item.get('parent_title'),
+                            season_number=item.get('season_number'),
+                            episode_number=item.get('episode_number'),
+                            year=item.get('year'),
+                            library_section=item.get('library_section'),
+                            progress_percent=item.get('progress_percent', 100.0),
+                            started_at=item.get('viewed_at'),
+                            updated_at=item.get('viewed_at'),
+                            is_complete=item.get('is_complete', True)
+                        )
+                        db.add(new_event)
+                        logger.info(f"Added history event: {item.get('username')} watched {item.get('media_title')}")
+
+                    except Exception as e:
+                        logger.debug(f"Error processing history item: {e}")
+                        continue
+
+                db.commit()
+
+            except Exception as e:
+                logger.error(f"Error syncing history from {server.name}: {e}")
+                db.rollback()
+                continue
+
     async def _track_session_analytics(self, db, server_id: int, session: dict):
         """Track or update playback analytics for a session"""
         from ..models.playback_analytics import PlaybackEvent
         from datetime import datetime
 
         try:
-            # Check if we already have a record for this session
-            existing_event = db.query(PlaybackEvent).filter(
-                PlaybackEvent.server_id == server_id,
-                PlaybackEvent.provider_session_id == session.get('session_id')
-            ).first()
+            # Match by media_id, username, and server_id for the current viewing session
+            # This ensures each piece of media gets its own event, even if session IDs are reused
+            media_id = session.get('media_id')
+            username = session.get('username')
+            media_title = session.get('media_title') or session.get('title') or session.get('full_title')
+
+            # Find existing event for this specific media being watched recently (within last hour)
+            existing_event = None
+            if media_id and username:
+                existing_event = db.query(PlaybackEvent).filter(
+                    PlaybackEvent.server_id == server_id,
+                    PlaybackEvent.provider_media_id == media_id,
+                    PlaybackEvent.username == username,
+                    PlaybackEvent.updated_at > datetime.utcnow() - timedelta(hours=1)
+                ).order_by(PlaybackEvent.updated_at.desc()).first()
 
             if existing_event:
                 # Update existing event with latest progress
+                existing_event.provider_session_id = session.get('session_id')  # Update session ID
                 existing_event.progress_ms = session.get('progress_ms', 0)
                 existing_event.progress_percent = session.get('progress_percent', 0)
-                existing_event.state = session.get('state', 'unknown')
                 existing_event.updated_at = datetime.utcnow()
 
-                # Check if this should be marked as complete (>90% watched)
-                if session.get('progress_percent', 0) >= 90:
+                # Check if this should be marked as complete (>50% watched)
+                if session.get('progress_percent', 0) >= 50:
                     existing_event.is_complete = True
 
-            else:
+            if not existing_event:
                 # Create new playback event
                 new_event = PlaybackEvent(
                     server_id=server_id,
@@ -278,6 +369,8 @@ class SessionsCacheService:
                     media_type=session.get('media_type', 'unknown'),
                     grandparent_title=session.get('grandparent_title'),
                     parent_title=session.get('parent_title'),
+                    season_number=session.get('season_number'),
+                    episode_number=session.get('episode_number'),
                     year=session.get('year'),
                     library_section=session.get('library_section'),
                     device=session.get('device'),
@@ -292,7 +385,7 @@ class SessionsCacheService:
                     progress_percent=session.get('progress_percent', 0),
                     started_at=datetime.utcnow(),
                     updated_at=datetime.utcnow(),
-                    is_complete=session.get('progress_percent', 0) >= 90
+                    is_complete=session.get('progress_percent', 0) >= 50
                 )
                 db.add(new_event)
 

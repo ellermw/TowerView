@@ -22,6 +22,8 @@ class PlaybackEvent(Base):
     media_type = Column(String, nullable=True)  # movie, episode, track, etc.
     grandparent_title = Column(String, nullable=True)  # Show name
     parent_title = Column(String, nullable=True)  # Season
+    season_number = Column(Integer, nullable=True)  # Season number for TV episodes
+    episode_number = Column(Integer, nullable=True)  # Episode number for TV episodes
     library_section = Column(String, nullable=True)
     year = Column(String, nullable=True)
 

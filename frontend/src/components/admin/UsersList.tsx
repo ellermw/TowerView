@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from 'react-query'
+import { useNavigate } from 'react-router-dom'
 import {
   UserIcon,
   ShieldCheckIcon,
@@ -42,6 +43,7 @@ interface Library {
 }
 
 export default function UsersList() {
+  const navigate = useNavigate()
   const [refreshInterval] = useState(30000) // 30 seconds
   const [collapsedServers, setCollapsedServers] = useState<Set<string>>(new Set())
   const [selectedUser, setSelectedUser] = useState<ServerUser | null>(null)
@@ -361,8 +363,16 @@ export default function UsersList() {
                             )}
                           </div>
                           <div className="ml-3">
-                            <h3 className="text-sm font-medium text-slate-900 dark:text-white">
-                              {user.username}
+                            <h3 className="text-sm font-medium">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  navigate(`/admin/users/${user.user_id}/watch-history`)
+                                }}
+                                className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                              >
+                                {user.username}
+                              </button>
                             </h3>
                             {user.email && (
                               <p className="text-xs text-slate-500 dark:text-slate-400">

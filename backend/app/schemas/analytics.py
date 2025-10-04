@@ -78,6 +78,8 @@ class PlaybackEventCreate(BaseModel):
     media_type: Optional[str] = None
     grandparent_title: Optional[str] = None
     parent_title: Optional[str] = None
+    season_number: Optional[int] = None
+    episode_number: Optional[int] = None
     library_section: Optional[str] = None
     year: Optional[str] = None
 
@@ -108,3 +110,55 @@ class PlaybackEventCreate(BaseModel):
     # Analytics flags
     is_complete: bool = False
     is_watched: bool = False
+
+
+class WatchHistoryItemResponse(BaseModel):
+    """Individual watch history item for a user"""
+    id: int
+    server_name: str
+
+    # Media information
+    media_title: str
+    media_type: str  # movie, episode, etc.
+    grandparent_title: Optional[str] = None  # Show name for TV episodes
+    parent_title: Optional[str] = None  # Season name for TV episodes
+    season_number: Optional[int] = None
+    episode_number: Optional[int] = None
+    year: Optional[str] = None
+
+    # Playback details
+    device: Optional[str] = None
+    platform: Optional[str] = None
+    product: Optional[str] = None
+
+    # Streaming quality
+    video_decision: Optional[str] = None  # directplay, copy, transcode
+    original_resolution: Optional[str] = None
+    original_bitrate: Optional[str] = None
+    video_codec: Optional[str] = None
+
+    # Quality flags
+    is_4k: bool = False
+    is_hdr: bool = False
+    is_dolby_vision: bool = False
+
+    # Progress
+    progress_percent: float = 0.0
+    duration_ms: int = 0
+    progress_ms: int = 0
+
+    # Timestamps
+    started_at: datetime
+    ended_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class WatchHistoryResponse(BaseModel):
+    """Paginated watch history response"""
+    items: List[WatchHistoryItemResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

@@ -1191,3 +1191,99 @@ class PlexProvider(BaseProvider):
 
         except Exception:
             return None
+
+    async def get_watch_history(self, hours: int = 24) -> List[Dict[str, Any]]:
+        """
+        Fetch watch history from Plex for all users in the last N hours.
+        This captures completed/stopped sessions that may have been missed by active polling.
+        """
+        try:
+            await self._ensure_valid_token()
+
+            async with httpx.AsyncClient() as client:
+                # Fetch session history
+                response = await client.get(
+                    f"{self.base_url}/status/sessions/history/all",
+                    headers={"X-Plex-Token": self.token},
+                    timeout=30.0
+                )
+
+                if response.status_code != 200:
+                    logger.error(f"Failed to fetch Plex history: {response.status_code}")
+                    return []
+
+                import xml.etree.ElementTree as ET
+                root = ET.fromstring(response.content)
+
+                history_items = []
+                current_time = datetime.utcnow()
+                cutoff_time = current_time - timedelta(hours=hours)
+
+                for video in root.findall('.//Video'):
+                    try:
+                        # Get view timestamp
+                        viewed_at = video.get('viewedAt')
+                        if not viewed_at:
+                            continue
+
+                        viewed_datetime = datetime.fromtimestamp(int(viewed_at))
+
+                        # Skip if outside our time window
+                        if viewed_datetime < cutoff_time:
+                            continue
+
+                        # Extract basic info
+                        item = {
+                            'media_id': video.get('ratingKey'),
+                            'session_id': f"history_{video.get('ratingKey')}_{viewed_at}",  # Synthetic session ID
+                            'media_type': video.get('type', 'unknown'),
+                            'title': video.get('title'),
+                            'grandparent_title': video.get('grandparentTitle'),
+                            'parent_title': video.get('parentTitle'),
+                            'year': video.get('year'),
+                            'viewed_at': viewed_datetime,
+                            'library_section': video.get('librarySectionTitle'),
+                        }
+
+                        # Get user info
+                        account_elem = video.find('.//Account')
+                        if account_elem is not None:
+                            item['user_id'] = account_elem.get('id')
+                            item['username'] = account_elem.get('title')
+
+                        # For history items, mark as 100% complete if viewCount > 0
+                        view_count = int(video.get('viewCount', 0))
+                        if view_count > 0:
+                            item['progress_percent'] = 100.0
+                            item['is_complete'] = True
+                        else:
+                            # If viewOffset exists, calculate progress
+                            view_offset = int(video.get('viewOffset', 0))
+                            duration = int(video.get('duration', 0))
+                            if duration > 0:
+                                item['progress_percent'] = (view_offset / duration) * 100
+                                item['is_complete'] = item['progress_percent'] >= 50
+                            else:
+                                item['progress_percent'] = 0
+                                item['is_complete'] = False
+
+                        # Set full title
+                        if item['media_type'] == 'episode':
+                            item['full_title'] = item['title']
+                            item['media_title'] = item['title']
+                        else:
+                            item['media_title'] = item['title']
+                            item['full_title'] = item['title']
+
+                        history_items.append(item)
+
+                    except Exception as e:
+                        logger.debug(f"Error parsing history item: {e}")
+                        continue
+
+                logger.info(f"Fetched {len(history_items)} watch history items from last {hours} hours")
+                return history_items
+
+        except Exception as e:
+            logger.error(f"Failed to fetch Plex watch history: {e}")
+            return []

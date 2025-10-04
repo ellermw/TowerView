@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-## Version 2.3.15 - Enhanced Session Display
+## Version 2.3.16 - Watch History & Auto-Refresh Improvements
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -12,8 +12,9 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 - **Real-Time Monitoring**: Live server statistics, bandwidth usage, and transcoding metrics
 - **Session Management**: View and terminate active streaming sessions
 - **User Management**: Comprehensive user administration across all connected servers
+- **Watch History**: Click any username to view their complete viewing history (up to 365 days)
 - **Audit Logging**: Complete audit trail of all administrative actions with filtering and search
-- **Container Management**: Docker container control via Portainer integration
+- **Container Management**: Docker container control via Portainer integration with auto-refresh tokens
 
 ### Navigation Structure
 
@@ -397,7 +398,42 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.15 (Current)
+### Version 2.3.16 (Current)
+
+- **Watch History Feature**:
+  - Click any username on Dashboard or Users page to view their complete watch history
+  - Shows up to 365 days of viewing history with 50 items per page
+  - Comprehensive details for each watch event:
+    - Episode name and show info for TV shows (with season/episode numbers)
+    - Resolution with 4K/HDR/Dolby Vision badges
+    - Original bitrate in Kbps/Mbps
+    - Play state (Direct Play, Direct Stream, Transcode) with color-coded badges
+    - Completion percentage with visual progress bar
+    - Device and platform information
+    - Smart date formatting (relative for recent, absolute for older)
+  - Advanced filtering and search:
+    - Search by title, device, resolution, or any column
+    - Filter by server
+    - Time period selector (7, 30, 90, 180, 365 days)
+  - Sorted by most recent viewing first
+  - New backend endpoint: `/api/admin/users/{provider_user_id}/watch-history`
+  - Database migration adds `season_number` and `episode_number` to `playback_events` table
+
+- **Portainer Token Auto-Refresh**:
+  - Automatic JWT token refresh for Portainer integration
+  - Checks token expiry with 5-minute buffer before expiration
+  - Auto-authenticates using stored credentials when token expires
+  - No more "connect to Portainer again" prompts after container restarts
+  - Transparent token updates in database
+  - Supports both JWT tokens (auto-refresh) and API keys (no expiration)
+
+- **Enhanced Episode Number Tracking**:
+  - All providers (Plex, Emby, Jellyfin) now capture season and episode numbers
+  - Emby provider extracts `ParentIndexNumber` and `IndexNumber`
+  - Jellyfin provider extracts `ParentIndexNumber` and `IndexNumber`
+  - Episode numbers now display in watch history and active sessions
+
+### Version 2.3.15
 
 - **Enhanced Session Display for TV Shows**:
   - Added episode number display to active sessions
@@ -407,7 +443,6 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
     - **Line 1 (Episode Title)**: e.g., "The One Where Ross Got High"
     - **Line 2 (Show - Season - Episode)**: e.g., "Friends - Season 6 - Episode 9"
   - Improved clarity for tracking which episode users are watching
-  - Works for Plex servers (Emby/Jellyfin support to be added in future updates)
 
 ### Version 2.3.14
 

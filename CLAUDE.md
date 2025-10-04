@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TowerView is a unified media server management platform that provides a single administrative interface for managing multiple media servers (Plex, Jellyfin, Emby). It includes real-time monitoring, user management, session control, analytics, and Docker container management via Portainer integration.
 
-**Current Version:** 2.3.15
+**Current Version:** 2.3.16
 
 ## Architecture
 
@@ -252,6 +252,21 @@ ADMIN_PASSWORD=secure_password
 
 TowerView automatically syncs Docker container mappings every 5 minutes via `container_sync_service.py`. This handles container ID changes when containers are recreated. Manual sync available in Settings > Portainer.
 
+### Portainer Token Auto-Refresh
+
+Version 2.3.16+ includes automatic Portainer JWT token refresh:
+
+**How It Works**:
+- `PortainerAuthService` checks token expiry with 5-minute buffer before expiration
+- If token is expired or about to expire, automatically re-authenticates using stored credentials
+- Updates database with new token transparently
+- Supports both JWT tokens (auto-refresh) and API keys (no expiration)
+
+**Implementation**:
+- `backend/app/services/portainer_auth_service.py`: Token validation and refresh logic
+- `backend/app/services/metrics_cache_service.py`: Uses `_get_fresh_token()` for all Portainer API calls
+- No user intervention required after container restarts or token expiration
+
 ### Credential Encryption
 
 Media server credentials are encrypted before storage using Fernet encryption. See `backend/app/core/security.py` for `credential_encryption` implementation.
@@ -276,7 +291,7 @@ See provider implementations for details.
 
 ### Session Display for TV Shows
 
-Version 2.3.15+ includes enhanced TV show episode display in active sessions:
+Version 2.3.15+ includes enhanced TV show episode display in active sessions and watch history:
 
 **Backend Session Fields** (`backend/app/schemas/session.py`):
 - `season_number: Optional[int]` - Season number from provider API
@@ -285,20 +300,43 @@ Version 2.3.15+ includes enhanced TV show episode display in active sessions:
 - `parent_title: Optional[str]` - Season name (e.g., "Season 6")
 - `title: Optional[str]` - Episode title (e.g., "The One Where Ross Got High")
 
-**Plex Provider** (`backend/app/providers/plex.py`):
-- Captures `parentIndex` as `season_number`
-- Captures `index` as `episode_number`
-- These fields are available in the Plex XML API response for episode sessions
+**Provider Support**:
+- **Plex** (`backend/app/providers/plex.py`): Captures `parentIndex` as `season_number`, `index` as `episode_number`
+- **Emby** (`backend/app/providers/emby.py`): Captures `ParentIndexNumber` as `season_number`, `IndexNumber` as `episode_number`
+- **Jellyfin** (`backend/app/providers/jellyfin.py`): Captures `ParentIndexNumber` as `season_number`, `IndexNumber` as `episode_number`
 
 **Frontend Display** (`frontend/src/components/admin/AdminHome.tsx`):
 - **Line 1 (Episode Title)**: Shows `session.title` in bold
 - **Line 2 (Context)**: Shows `grandparent_title - parent_title - Episode {episode_number}` in gray
-- Example: "Friends - Season 6 - Episode 9"
+- Example: "The One Where Ross Got High" / "Friends - Season 6 - Episode 9"
 - For movies, only shows the title (no second line)
 
-**Future Enhancements**:
-- Emby/Jellyfin providers currently don't capture episode numbers (to be added)
-- Could add episode air date or other metadata if needed
+### Watch History
+
+Version 2.3.16+ includes comprehensive watch history tracking for media users:
+
+**Features**:
+- Click any username in Dashboard or Users page to view their watch history
+- Shows up to 365 days of playback history
+- 50 items per page with pagination
+- Search by title, device, resolution, or any column
+- Filter by server and time period (7-365 days)
+- Sorted by most recent first
+
+**Data Displayed**:
+- **Title**: Episode name (line 1) / Show - Season - Episode # (line 2) for TV shows
+- **Resolution**: Actual playback resolution with 4K/HDR/DV badges
+- **Bitrate**: Original bitrate in Kbps/Mbps
+- **Play State**: Direct Play, Direct Stream, or Transcode with color-coded badges
+- **Completion**: Progress bar showing watch completion percentage
+- **Device**: Device name and platform information
+- **Date**: Smart date formatting (relative for recent, absolute for older)
+
+**Implementation**:
+- **Backend**: `/api/admin/users/{provider_user_id}/watch-history` endpoint
+- **Frontend**: `/admin/users/{userId}/watch-history` route with WatchHistory component
+- **Database**: `playback_events` table with `season_number` and `episode_number` fields
+- **Schema**: `WatchHistoryResponse` with paginated `WatchHistoryItemResponse` items
 
 ### Plex OAuth Flow
 
