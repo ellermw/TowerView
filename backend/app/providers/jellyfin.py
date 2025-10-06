@@ -14,6 +14,13 @@ class JellyfinProvider(BaseProvider):
         self.admin_token = credentials.get("admin_token") or credentials.get("api_token") or credentials.get("token")
         logger.debug(f"Jellyfin provider initialized with credentials: {list(credentials.keys())}")
 
+    def _build_image_url(self, item_id: str, image_tag: Optional[str], image_type: str = "Primary") -> Optional[str]:
+        """Build Jellyfin image URL from item ID and image tag"""
+        if not item_id or not image_tag:
+            return None
+        base_url = self.base_url.rstrip('/')
+        return f"{base_url}/Items/{item_id}/Images/{image_type}?tag={image_tag}"
+
     async def connect(self) -> bool:
         """Test connection to Jellyfin server"""
         try:
@@ -291,6 +298,9 @@ class JellyfinProvider(BaseProvider):
                         "content_rating": item.get("OfficialRating"),
                         "runtime": item.get("RunTimeTicks", 0) // 10000000 if item.get("RunTimeTicks") else 0,
                         "library_section": item.get("LibraryName", "Unknown Library"),
+                        "thumb": self._build_image_url(item.get("Id"), item.get("ImageTags", {}).get("Primary")) if item.get("ImageTags", {}).get("Primary") else None,
+                        "art": self._build_image_url(item.get("Id"), item.get("BackdropImageTags", [])[0] if item.get("BackdropImageTags") else None, "Backdrop") if item.get("BackdropImageTags") else None,
+                        "grandparent_thumb": self._build_image_url(item.get("SeriesId"), item.get("SeriesPrimaryImageTag"), "Primary") if media_type == "episode" and item.get("SeriesId") and item.get("SeriesPrimaryImageTag") else None,
 
                         # Streaming details
                         "video_decision": "transcode" if is_transcoding else play_method,

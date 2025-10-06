@@ -285,6 +285,9 @@ class PlexProvider(BaseProvider):
                         "content_rating": video.get("contentRating"),
                         "library_section": video.get("librarySectionTitle"),
                         "_library_section_title": video.get("librarySectionTitle"),  # Keep for 4K detection
+                        "thumb": f"{self.server_url}{video.get('thumb')}" if video.get("thumb") else None,  # Poster/thumbnail URL
+                        "art": f"{self.server_url}{video.get('art')}" if video.get("art") else None,  # Background art URL
+                        "grandparent_thumb": f"{self.server_url}{video.get('grandparentThumb')}" if video.get("grandparentThumb") else None,  # Show poster for episodes
 
                         # User info
                         "user_id": None,

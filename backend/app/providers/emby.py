@@ -15,6 +15,13 @@ class EmbyProvider(BaseProvider):
         logger.debug(f"Emby provider initialized - has_api_key: {'Yes' if self.api_key else 'No'}, has_admin_token: {'Yes' if self.admin_token else 'No'}")
         logger.debug(f"Available credential keys: {list(credentials.keys())}")
 
+    def _build_image_url(self, item_id: str, image_tag: Optional[str], image_type: str = "Primary") -> Optional[str]:
+        """Build Emby image URL from item ID and image tag"""
+        if not item_id or not image_tag:
+            return None
+        base_url = self.base_url.rstrip('/')
+        return f"{base_url}/Items/{item_id}/Images/{image_type}?tag={image_tag}"
+
     async def connect(self) -> bool:
         """Test connection to Emby server"""
         try:
@@ -323,6 +330,9 @@ class EmbyProvider(BaseProvider):
                         "summary": item.get("Overview"),
                         "runtime": item.get("RunTimeTicks", 0) // 10000000 if item.get("RunTimeTicks") else 0,
                         "library_section": "Unknown Library",  # Emby doesn't provide this in session data
+                        "thumb": self._build_image_url(item.get("Id"), item.get("ImageTags", {}).get("Primary")) if item.get("ImageTags", {}).get("Primary") else None,
+                        "art": self._build_image_url(item.get("Id"), item.get("BackdropImageTags", [])[0] if item.get("BackdropImageTags") else None, "Backdrop") if item.get("BackdropImageTags") else None,
+                        "grandparent_thumb": self._build_image_url(item.get("SeriesId"), item.get("SeriesPrimaryImageTag"), "Primary") if media_type == "episode" and item.get("SeriesId") and item.get("SeriesPrimaryImageTag") else None,
 
                         # Streaming details
                         "video_decision": "transcode" if is_transcoding else play_method,

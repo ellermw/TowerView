@@ -14,7 +14,8 @@ import {
   ExclamationTriangleIcon,
   CubeIcon,
   WifiIcon,
-  ClockIcon
+  ClockIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline'
 import api from '../../services/api'
 import SyncSettings from './SyncSettings'

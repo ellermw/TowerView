@@ -26,6 +26,7 @@ import { Disclosure, Transition, Dialog } from '@headlessui/react'
 import api from '../../services/api'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useAuthStore } from '../../store/authStore'
+import SessionCard from './SessionCard'
 
 interface LiveSession {
   session_id: string
@@ -50,6 +51,11 @@ interface LiveSession {
   summary?: string
   content_rating?: string
   library_section?: string
+  thumb?: string
+  art?: string
+  grandparent_thumb?: string
+  season_number?: number
+  episode_number?: number
 
   // User info
   user_id?: string
@@ -1156,194 +1162,14 @@ export default function AdminHome() {
                                         leaveTo="transform scale-95 opacity-0"
                                       >
                                         <Disclosure.Panel>
-                                          <div className="p-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                                          <div className="p-4 grid gap-4 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
                                             {serverSessions.map((session) => (
-              <div key={session.session_id} className="border border-slate-100 dark:border-slate-700 rounded p-3">
-                                                <div className="flex items-start justify-between mb-2">
-                                                  <div>
-                                                    <h5 className="font-medium text-slate-900 dark:text-white text-xs mb-1">
-                                                      {session.title || session.full_title || 'Unknown Media'}
-                                                    </h5>
-                                                    {session.grandparent_title && (
-                                                      <p className="text-xs text-slate-600 dark:text-slate-400">
-                                                        {session.grandparent_title}
-                                                        {session.parent_title && ` - ${session.parent_title}`}
-                                                        {session.episode_number && ` - Episode ${session.episode_number}`}
-                                                      </p>
-                                                    )}
-                                                  </div>
-                                                  {/* Show terminate button for:
-                                                     1. Admins and staff with terminate permission (all sessions)
-                                                     2. Media users (only their own sessions) */}
-                                                  {(isAdmin || hasPermission('terminate_sessions') ||
-                                                    (currentUser?.type === 'media_user' &&
-                                                     session.username?.toLowerCase() === currentUser?.username?.toLowerCase())) && (
-                                                    <button
-                                                      onClick={() => handleTerminateClick(
-                                                        session.server_id!,
-                                                        session.session_id,
-                                                        serverType
-                                                      )}
-                                                      disabled={terminateSessionMutation.isLoading}
-                                                      className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                                                      title="Terminate Session"
-                                                    >
-                                                      <XMarkIcon className="w-3 h-3" />
-                                                    </button>
-                                                  )}
-                                                </div>
-
-                                                <div className="space-y-2 text-xs text-slate-600 dark:text-slate-400">
-                                                  <div className="flex justify-between">
-                                                    <span>Username:</span>
-                                                    {session.user_id ? (
-                                                      <button
-                                                        onClick={(e) => {
-                                                          e.stopPropagation()
-                                                          navigate(`/admin/users/${session.user_id}/watch-history`)
-                                                        }}
-                                                        className="font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                                                      >
-                                                        {maskUsername(session.username || 'Unknown')}
-                                                      </button>
-                                                    ) : (
-                                                      <span className="font-medium text-slate-900 dark:text-white">{maskUsername(session.username || 'Unknown')}</span>
-                                                    )}
-                                                  </div>
-                                                  <div className="flex justify-between">
-                                                    <span>Device:</span>
-                                                    <span className="font-medium text-slate-900 dark:text-white">{session.device || 'Unknown'}</span>
-                                                  </div>
-                                                  <div className="flex justify-between">
-                                                    <span>Player:</span>
-                                                    <span className="font-medium text-slate-900 dark:text-white">{session.product || session.platform || 'Unknown'}</span>
-                                                  </div>
-                                                  <div className="flex justify-between">
-                                                    <span>State:</span>
-                                                    <span className="flex items-center gap-1">
-                                                      {getStateIcon(session.state)}
-                                                      <span className="capitalize font-medium text-slate-900 dark:text-white">{session.state}</span>
-                                                      {session.video_decision === 'transcode' ? (
-                                                        <>
-                                                          {(session.transcode_hw_full_pipeline || (session.transcode_hw_decode && session.transcode_hw_encode) || (session.transcode_hw_decode_title && session.transcode_hw_encode_title)) ? (
-                                                            <span className="flex items-center text-purple-600 dark:text-purple-400 ml-1">
-                                                              <CpuChipIcon className="w-3 h-3 mr-0.5" />
-                                                              <span className="text-xs">HW Transcode</span>
-                                                            </span>
-                                                          ) : (session.transcode_hw_decode || session.transcode_hw_encode || session.transcode_hw_decode_title || session.transcode_hw_encode_title) ? (
-                                                            <span className="flex items-center text-blue-600 dark:text-blue-400 ml-1">
-                                                              <CpuChipIcon className="w-3 h-3 mr-0.5" />
-                                                              <span className="text-xs">Partial HW</span>
-                                                            </span>
-                                                          ) : (
-                                                            <span className="flex items-center text-orange-600 dark:text-orange-400 ml-1">
-                                                              <ComputerDesktopIcon className="w-3 h-3 mr-0.5" />
-                                                              <span className="text-xs">SW Transcode</span>
-                                                            </span>
-                                                          )}
-                                                        </>
-                                                      ) : (
-                                                        <span className="text-green-500 ml-1">• Direct Play</span>
-                                                      )}
-                                                    </span>
-                                                  </div>
-                                                  <div className="flex justify-between">
-                                                    <span>Video Codec:</span>
-                                                    <span className="font-medium text-slate-900 dark:text-white">{session.video_codec || 'Unknown'}</span>
-                                                  </div>
-                                                  {/* Resolution - Show transcoding details if video is being transcoded */}
-                                                  {session.video_decision === 'transcode' ? (
-                                                    <div className="flex justify-between">
-                                                      <span>Resolution:</span>
-                                                      <span className="font-medium text-slate-900 dark:text-white text-xs">
-                                                        <span className="text-slate-600 dark:text-slate-400">From:</span> {session.original_resolution || 'Unknown'}
-                                                        {session.is_4k && <span className="text-purple-600 ml-1">• 4K</span>}
-                                                        <br />
-                                                        <span className="text-slate-600 dark:text-slate-400">To:</span> {session.stream_resolution || session.original_resolution || 'Unknown'}
-                                                      </span>
-                                                    </div>
-                                                  ) : (
-                                                    <div className="flex justify-between">
-                                                      <span>Resolution:</span>
-                                                      <span className="font-medium text-slate-900 dark:text-white">
-                                                        {session.original_resolution || 'Unknown'}
-                                                        {session.is_4k && <span className="text-purple-600 ml-1">• 4K</span>}
-                                                      </span>
-                                                    </div>
-                                                  )}
-
-                                                  <div className="flex justify-between">
-                                                    <span>HDR:</span>
-                                                    <span className="font-medium text-slate-900 dark:text-white">
-                                                      {session.is_dolby_vision ? (
-                                                        <span className="text-purple-600">Dolby Vision</span>
-                                                      ) : session.is_hdr ? (
-                                                        <span className="text-blue-600">HDR</span>
-                                                      ) : (
-                                                        <span className="text-slate-500">None</span>
-                                                      )}
-                                                    </span>
-                                                  </div>
-
-                                                  {/* Bitrate - Show transcoding details if video is being transcoded */}
-                                                  {session.video_decision === 'transcode' ? (
-                                                    <div className="flex justify-between">
-                                                      <span>Video Bitrate:</span>
-                                                      <span className="font-medium text-slate-900 dark:text-white text-xs">
-                                                        <span className="text-slate-600 dark:text-slate-400">Original:</span> {formatBitrate(session.original_bitrate || 0)}
-                                                        <br />
-                                                        <span className="text-slate-600 dark:text-slate-400">Stream:</span> {formatBitrate(session.stream_bitrate || 0)}
-                                                      </span>
-                                                    </div>
-                                                  ) : (
-                                                    <div className="flex justify-between">
-                                                      <span>Bitrate:</span>
-                                                      <span className="font-medium text-slate-900 dark:text-white">
-                                                        {session.stream_bitrate ? formatBitrate(session.stream_bitrate) :
-                                                         session.original_bitrate ? formatBitrate(session.original_bitrate) : 'Unknown'}
-                                                      </span>
-                                                    </div>
-                                                  )}
-
-                                                  {/* Audio - Show transcoding details if audio is being transcoded */}
-                                                  {session.audio_decision === 'transcode' ? (
-                                                    <div className="flex justify-between">
-                                                      <span>Audio:</span>
-                                                      <span className="font-medium text-slate-900 dark:text-white text-xs">
-                                                        <span className="text-slate-600 dark:text-slate-400">Original:</span> {session.original_audio_codec || 'Unknown'}
-                                                        {session.original_audio_channels && ` ${session.original_audio_channels}ch`}
-                                                        <br />
-                                                        <span className="text-slate-600 dark:text-slate-400">Stream:</span> {session.audio_codec || 'Unknown'}
-                                                        {session.audio_channels && ` ${session.audio_channels}ch`}
-                                                      </span>
-                                                    </div>
-                                                  ) : null}
-
-                                                  <div className="flex justify-between">
-                                                    <span>Bandwidth:</span>
-                                                    <span className="font-medium text-blue-600 dark:text-blue-400">
-                                                      {session.session_bandwidth ? formatBitrate(session.session_bandwidth) : 'Unknown'}
-                                                    </span>
-                                                  </div>
-                                                </div>
-
-                                                {/* Progress Bar */}
-                                                <div className="mt-3">
-                                                  <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
-                                                    <span>{formatTime(session.progress_ms)}</span>
-                                                    <span className="text-center">
-                                                      {session.progress_percent?.toFixed(1) || '0.0'}% / {formatTime((session.duration_ms || 0) - (session.progress_ms || 0))} remaining
-                                                    </span>
-                                                    <span>{formatTime(session.duration_ms)}</span>
-                                                  </div>
-                                                  <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                                                    <div
-                                                      className={`h-2 rounded-full transition-all duration-300 ${getProgressBarColor(session.state)}`}
-                                                      style={{ width: `${Math.min(100, Math.max(0, session.progress_percent || 0))}%` }}
-                                                    />
-                                                  </div>
-                                                </div>
-                                              </div>
+                                              <SessionCard
+                                                key={session.session_id}
+                                                session={session}
+                                                onTerminate={() => handleTerminateClick(session.server_id!, session.session_id, serverType)}
+                                                canTerminate={isAdmin || hasPermission('terminate_sessions') || (currentUser?.type === 'media_user' && session.username?.toLowerCase() === currentUser?.username?.toLowerCase())}
+                                              />
                                             ))}
                                           </div>
                                         </Disclosure.Panel>
@@ -1364,303 +1190,88 @@ export default function AdminHome() {
           </div>
         )}
       </div>
-      ) : null}
+    ) : null}
 
-      {/* Analytics Section */}
-      {(isAdmin || hasPermission('view_analytics')) ? (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <ChartBarIcon className="w-5 h-5 text-blue-500" />
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-              Analytics
-            </h2>
-          </div>
+    {/* Plex Termination Message Modal */}
+    <Transition show={plexTerminateModal.open} as={React.Fragment}>
+      <Dialog as="div" className="relative z-50" onClose={() => setPlexTerminateModal({ open: false })}>
+        <Transition.Child
+          as={React.Fragment}
+          enter="ease-out duration-300"
+          enterFrom="opacity-0"
+          enterTo="opacity-100"
+          leave="ease-in duration-200"
+          leaveFrom="opacity-100"
+          leaveTo="opacity-0"
+        >
+          <div className="fixed inset-0 bg-black bg-opacity-25" />
+        </Transition.Child>
 
-          {/* Analytics Filters */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-slate-600 dark:text-slate-400">Server:</label>
-              <select
-                value={analyticsFilters.server_id || ''}
-                onChange={(e) => setAnalyticsFilters(prev => ({
-                  ...prev,
-                  server_id: e.target.value ? parseInt(e.target.value) : undefined
-                }))}
-                className="text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2 py-1"
-              >
-                <option value="">All Servers</option>
-                {servers.map((server: any) => (
-                  <option key={server.id} value={server.id}>
-                    {server.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+        <div className="fixed inset-0 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4 text-center">
+            <Transition.Child
+              as={React.Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0 scale-95"
+              enterTo="opacity-100 scale-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100 scale-100"
+              leaveTo="opacity-0 scale-95"
+            >
+              <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white dark:bg-slate-800 p-6 text-left align-middle shadow-xl transition-all">
+                <Dialog.Title
+                  as="h3"
+                  className="text-lg font-medium leading-6 text-slate-900 dark:text-white"
+                >
+                  Terminate Plex Stream
+                </Dialog.Title>
+                <div className="mt-2">
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                    Enter a message to display to the user (optional). If left blank, the default message will be used.
+                  </p>
+                  <textarea
+                    value={plexTerminateMessage}
+                    onChange={(e) => setPlexTerminateMessage(e.target.value)}
+                    placeholder="Enter termination message..."
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-700 dark:text-white"
+                    rows={3}
+                  />
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                    Default: "{defaultPlexMessage}"
+                  </p>
+                </div>
 
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-slate-600 dark:text-slate-400">Range:</label>
-              <select
-                value={analyticsFilters.days_back}
-                onChange={(e) => setAnalyticsFilters(prev => ({
-                  ...prev,
-                  days_back: parseInt(e.target.value)
-                }))}
-                className="text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2 py-1"
-              >
-                <option value={1}>Last 24 Hours</option>
-                <option value={7}>Last 7 Days</option>
-                <option value={31}>Last 31 Days</option>
-                <option value={365}>Last 365 Days</option>
-              </select>
-            </div>
+                <div className="mt-4 flex justify-end space-x-2">
+                  <button
+                    type="button"
+                    className="inline-flex justify-center rounded-md border border-transparent bg-slate-100 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                    onClick={() => setPlexTerminateModal({ open: false })}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+                    onClick={() => {
+                      if (plexTerminateModal.serverId && plexTerminateModal.sessionId) {
+                        terminateSessionMutation.mutate({
+                          serverId: plexTerminateModal.serverId,
+                          sessionId: plexTerminateModal.sessionId,
+                          message: plexTerminateMessage || defaultPlexMessage
+                        })
+                      }
+                    }}
+                    disabled={terminateSessionMutation.isLoading}
+                  >
+                    {terminateSessionMutation.isLoading ? 'Terminating...' : 'Terminate Stream'}
+                  </button>
+                </div>
+              </Dialog.Panel>
+            </Transition.Child>
           </div>
         </div>
-
-        {analyticsLoading ? (
-          <div className="card">
-            <div className="card-body">
-              <p className="text-slate-600 dark:text-slate-400">Loading analytics...</p>
-            </div>
-          </div>
-        ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {/* Summary Stats */}
-            <div className="card md:col-span-2 lg:col-span-3">
-              <div className="card-body">
-                <h3 className="font-semibold text-slate-900 dark:text-white mb-4">Overview</h3>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                      {analytics?.total_sessions || 0}
-                    </div>
-                    <div className="text-xs text-slate-600 dark:text-slate-400">Total Sessions</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                      {analytics?.total_users || 0}
-                    </div>
-                    <div className="text-xs text-slate-600 dark:text-slate-400">Unique Users</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                      {analytics?.total_watch_time_hours || 0}h
-                    </div>
-                    <div className="text-xs text-slate-600 dark:text-slate-400">Watch Time</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                      {analytics?.completion_rate?.toFixed(1) || 0}%
-                    </div>
-                    <div className="text-xs text-slate-600 dark:text-slate-400">Completion Rate</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                      {analytics?.transcode_rate?.toFixed(1) || 0}%
-                    </div>
-                    <div className="text-xs text-slate-600 dark:text-slate-400">Transcode Rate</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Top Users */}
-            <div className="card">
-              <div className="card-body">
-                <div className="flex items-center gap-2 mb-3">
-                  <UsersIcon className="w-4 h-4 text-blue-500" />
-                  <h3 className="font-semibold text-slate-900 dark:text-white">Most Active Users</h3>
-                </div>
-                {analytics?.top_users?.length ? (
-                  <div className="space-y-2">
-                    {analytics.top_users.slice(0, 5).map((user, index) => (
-                      <div key={index} className="flex justify-between items-center text-sm">
-                        <span className="text-slate-900 dark:text-white">{maskUsername(user.username)}</span>
-                        <div className="text-right">
-                          <div className="text-slate-600 dark:text-slate-400">{user.total_plays} plays</div>
-                          <div className="text-xs text-slate-500">{Math.round(user.total_watch_time_minutes / 60)}h</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">No data available</p>
-                )}
-              </div>
-            </div>
-
-            {/* Top Movies */}
-            <div className="card">
-              <div className="card-body">
-                <div className="flex items-center gap-2 mb-3">
-                  <FilmIcon className="w-4 h-4 text-green-500" />
-                  <h3 className="font-semibold text-slate-900 dark:text-white">Most Watched Movies</h3>
-                </div>
-                {analytics?.top_movies?.length ? (
-                  <div className="space-y-2">
-                    {analytics.top_movies.slice(0, 5).map((movie, index) => (
-                      <div key={index} className="text-sm">
-                        <div className="text-slate-900 dark:text-white truncate">{movie.title}</div>
-                        <div className="text-xs text-slate-500">{movie.total_plays} plays • {movie.unique_users} users</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">No data available</p>
-                )}
-              </div>
-            </div>
-
-            {/* Top TV Shows */}
-            <div className="card">
-              <div className="card-body">
-                <div className="flex items-center gap-2 mb-3">
-                  <TvIcon className="w-4 h-4 text-purple-500" />
-                  <h3 className="font-semibold text-slate-900 dark:text-white">Most Watched TV Shows</h3>
-                </div>
-                {analytics?.top_tv_shows?.length ? (
-                  <div className="space-y-2">
-                    {analytics.top_tv_shows.slice(0, 5).map((show, index) => (
-                      <div key={index} className="text-sm">
-                        <div className="text-slate-900 dark:text-white truncate">{show.title}</div>
-                        <div className="text-xs text-slate-500">{show.total_plays} plays • {show.unique_users} users</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">No data available</p>
-                )}
-              </div>
-            </div>
-
-            {/* Top Libraries */}
-            <div className="card">
-              <div className="card-body">
-                <div className="flex items-center gap-2 mb-3">
-                  <FolderIcon className="w-4 h-4 text-orange-500" />
-                  <h3 className="font-semibold text-slate-900 dark:text-white">Most Used Libraries</h3>
-                </div>
-                {analytics?.top_libraries?.length ? (
-                  <div className="space-y-2">
-                    {analytics.top_libraries.slice(0, 5).map((library, index) => (
-                      <div key={index} className="text-sm">
-                        <div className="text-slate-900 dark:text-white truncate">{library.library_name}</div>
-                        <div className="text-xs text-slate-500">{library.total_plays} plays • {library.unique_users} users</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">No data available</p>
-                )}
-              </div>
-            </div>
-
-            {/* Top Devices */}
-            <div className="card">
-              <div className="card-body">
-                <div className="flex items-center gap-2 mb-3">
-                  <DevicePhoneMobileIcon className="w-4 h-4 text-red-500" />
-                  <h3 className="font-semibold text-slate-900 dark:text-white">Most Common Devices</h3>
-                </div>
-                {analytics?.top_devices?.length ? (
-                  <div className="space-y-2">
-                    {analytics.top_devices.slice(0, 5).map((device, index) => (
-                      <div key={index} className="text-sm">
-                        <div className="text-slate-900 dark:text-white truncate">{device.device_name}</div>
-                        <div className="text-xs text-slate-500">{device.total_sessions} sessions • {device.transcode_percentage?.toFixed(1) || '0.0'}% transcode</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">No data available</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-      ) : null}
-
-      {/* Plex Termination Message Modal */}
-      <Transition show={plexTerminateModal.open} as={React.Fragment}>
-        <Dialog as="div" className="relative z-50" onClose={() => setPlexTerminateModal({ open: false })}>
-          <Transition.Child
-            as={React.Fragment}
-            enter="ease-out duration-300"
-            enterFrom="opacity-0"
-            enterTo="opacity-100"
-            leave="ease-in duration-200"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
-          >
-            <div className="fixed inset-0 bg-black bg-opacity-25" />
-          </Transition.Child>
-
-          <div className="fixed inset-0 overflow-y-auto">
-            <div className="flex min-h-full items-center justify-center p-4 text-center">
-              <Transition.Child
-                as={React.Fragment}
-                enter="ease-out duration-300"
-                enterFrom="opacity-0 scale-95"
-                enterTo="opacity-100 scale-100"
-                leave="ease-in duration-200"
-                leaveFrom="opacity-100 scale-100"
-                leaveTo="opacity-0 scale-95"
-              >
-                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white dark:bg-slate-800 p-6 text-left align-middle shadow-xl transition-all">
-                  <Dialog.Title
-                    as="h3"
-                    className="text-lg font-medium leading-6 text-slate-900 dark:text-white"
-                  >
-                    Terminate Plex Stream
-                  </Dialog.Title>
-                  <div className="mt-2">
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-                      Enter a message to display to the user (optional). If left blank, the default message will be used.
-                    </p>
-                    <textarea
-                      value={plexTerminateMessage}
-                      onChange={(e) => setPlexTerminateMessage(e.target.value)}
-                      placeholder="Enter termination message..."
-                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-700 dark:text-white"
-                      rows={3}
-                    />
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                      Default: "{defaultPlexMessage}"
-                    </p>
-                  </div>
-
-                  <div className="mt-4 flex justify-end space-x-2">
-                    <button
-                      type="button"
-                      className="inline-flex justify-center rounded-md border border-transparent bg-slate-100 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
-                      onClick={() => setPlexTerminateModal({ open: false })}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
-                      onClick={() => {
-                        if (plexTerminateModal.serverId && plexTerminateModal.sessionId) {
-                          terminateSessionMutation.mutate({
-                            serverId: plexTerminateModal.serverId,
-                            sessionId: plexTerminateModal.sessionId,
-                            message: plexTerminateMessage || defaultPlexMessage
-                          })
-                        }
-                      }}
-                      disabled={terminateSessionMutation.isLoading}
-                    >
-                      {terminateSessionMutation.isLoading ? 'Terminating...' : 'Terminate Stream'}
-                    </button>
-                  </div>
-                </Dialog.Panel>
-              </Transition.Child>
-            </div>
-          </div>
-        </Dialog>
-      </Transition>
+      </Dialog>
+    </Transition>
     </div>
   )
 }
