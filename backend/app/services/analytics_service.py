@@ -75,7 +75,12 @@ class AnalyticsService:
                     else_=0
                 ) / 60000  # Convert to minutes
             ).label('total_watch_time_minutes'),
-            func.avg(PlaybackEvent.progress_percent).label('avg_completion')
+            func.avg(
+                case(
+                    (PlaybackEvent.progress_percent >= 10, PlaybackEvent.progress_percent),
+                    else_=None
+                )
+            ).label('avg_completion')
         ).join(Server, PlaybackEvent.server_id == Server.id)\
          .filter(and_(
              self.get_date_filter(filters),
@@ -281,9 +286,15 @@ class AnalyticsService:
         ).scalar()
         total_watch_time_hours = int(total_watch_time_result or 0)
 
-        # Completion rate
-        completed_plays = base_query.filter(PlaybackEvent.is_complete == True).count()
-        completion_rate = (completed_plays / total_sessions * 100) if total_sessions > 0 else 0
+        # Completion rate (only count sessions with at least 10% progress)
+        sessions_with_min_progress = base_query.filter(PlaybackEvent.progress_percent >= 10).count()
+        completed_plays = base_query.filter(
+            and_(
+                PlaybackEvent.is_complete == True,
+                PlaybackEvent.progress_percent >= 10
+            )
+        ).count()
+        completion_rate = (completed_plays / sessions_with_min_progress * 100) if sessions_with_min_progress > 0 else 0
 
         # Transcode rate
         transcoded_sessions = base_query.filter(PlaybackEvent.video_decision == 'transcode').count()

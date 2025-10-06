@@ -155,6 +155,14 @@ class WatchHistoryItemResponse(BaseModel):
         from_attributes = True
 
 
+class WatchHistorySummary(BaseModel):
+    """Summary statistics for watch history"""
+    total_streams: int
+    total_watch_time_ms: int  # Total watch time in milliseconds
+    completion_rate: float  # Average completion percentage
+    transcode_rate: float  # Percentage of streams that were transcoded
+
+
 class WatchHistoryResponse(BaseModel):
     """Paginated watch history response"""
     items: List[WatchHistoryItemResponse]
@@ -162,3 +170,4 @@ class WatchHistoryResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+    summary: WatchHistorySummary

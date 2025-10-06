@@ -40,12 +40,20 @@ interface WatchHistoryItem {
   ended_at?: string
 }
 
+interface WatchHistorySummary {
+  total_streams: number
+  total_watch_time_ms: number
+  completion_rate: number
+  transcode_rate: number
+}
+
 interface WatchHistoryResponse {
   items: WatchHistoryItem[]
   total: number
   page: number
   page_size: number
   total_pages: number
+  summary: WatchHistorySummary
 }
 
 export default function WatchHistory() {
@@ -155,18 +163,82 @@ export default function WatchHistory() {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
-    const now = new Date()
-    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
-
-    if (diffInHours < 24) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const options: Intl.DateTimeFormatOptions = {
+      timeZone: 'America/Chicago',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
     }
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+    const formatted = date.toLocaleString('en-US', options)
+    return `${formatted} GMT-6`
+  }
+
+  const formatStartTime = (dateString: string) => {
+    const date = new Date(dateString)
+    // Format in CST (America/Chicago timezone)
+    const options: Intl.DateTimeFormatOptions = {
+      timeZone: 'America/Chicago',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    }
+    const formatted = date.toLocaleString('en-US', options)
+    return `${formatted} GMT-6`
+  }
+
+  const formatWatchTime = (ms: number) => {
+    const totalMinutes = Math.floor(ms / 60000)
+    const totalHours = Math.floor(totalMinutes / 60)
+    const totalDays = Math.floor(totalHours / 24)
+    const totalMonths = Math.floor(totalDays / 30)
+    const totalYears = Math.floor(totalDays / 365)
+
+    const parts = []
+
+    if (totalYears > 0) {
+      const remainingDays = totalDays % 365
+      const remainingMonths = Math.floor(remainingDays / 30)
+      const remainingDaysInMonth = remainingDays % 30
+      const remainingHours = totalHours % 24
+
+      parts.push(`${totalYears}y`)
+      if (remainingMonths > 0) parts.push(`${remainingMonths}mo`)
+      if (remainingDaysInMonth > 0) parts.push(`${remainingDaysInMonth}d`)
+      if (remainingHours > 0) parts.push(`${remainingHours}h`)
+    } else if (totalMonths > 0) {
+      const remainingDays = totalDays % 30
+      const remainingHours = totalHours % 24
+
+      parts.push(`${totalMonths}mo`)
+      if (remainingDays > 0) parts.push(`${remainingDays}d`)
+      if (remainingHours > 0) parts.push(`${remainingHours}h`)
+    } else if (totalDays > 0) {
+      const remainingHours = totalHours % 24
+
+      parts.push(`${totalDays}d`)
+      if (remainingHours > 0) parts.push(`${remainingHours}h`)
+    } else if (totalHours > 0) {
+      const remainingMinutes = totalMinutes % 60
+
+      parts.push(`${totalHours}h`)
+      if (remainingMinutes > 0) parts.push(`${remainingMinutes}m`)
+    } else {
+      parts.push(`${totalMinutes}m`)
+    }
+
+    return parts.join(' ')
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 -mx-6 -my-6 px-6 py-6">
+      <div className="w-full px-4">
         {/* Header */}
         <div className="mb-6">
           <button
@@ -250,6 +322,59 @@ export default function WatchHistory() {
           </div>
         </div>
 
+        {/* Overview Section */}
+        {!isLoading && history && (
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Total Streams</p>
+                  <p className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">
+                    {history.summary.total_streams.toLocaleString()}
+                  </p>
+                </div>
+                <PlayIcon className="h-12 w-12 text-blue-500" />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Watch Time</p>
+                  <p className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">
+                    {formatWatchTime(history.summary.total_watch_time_ms)}
+                  </p>
+                </div>
+                <PlayIcon className="h-12 w-12 text-green-500" />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Completion Rate</p>
+                  <p className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">
+                    {history.summary.completion_rate.toFixed(1)}%
+                  </p>
+                </div>
+                <PlayIcon className="h-12 w-12 text-purple-500" />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Transcode Rate</p>
+                  <p className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">
+                    {history.summary.transcode_rate.toFixed(1)}%
+                  </p>
+                </div>
+                <PlayIcon className="h-12 w-12 text-orange-500" />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Loading State */}
         {isLoading && (
           <div className="text-center py-12">
@@ -267,34 +392,34 @@ export default function WatchHistory() {
             </div>
 
             {/* Table */}
-            <div className="bg-white dark:bg-slate-800 rounded-lg shadow overflow-hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow">
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                <table className="w-full divide-y divide-slate-200 dark:divide-slate-700" style={{ tableLayout: 'auto', minWidth: '100%' }}>
                   <thead className="bg-slate-50 dark:bg-slate-900">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      <th className="px-3 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
                         Title
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      <th className="px-3 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
                         Server
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      <th className="px-3 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
                         Resolution
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      <th className="px-3 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
                         Bitrate
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      <th className="px-3 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
                         Play State
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      <th className="px-3 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
                         Completion
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      <th className="px-3 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
                         Device
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                        Date
+                      <th className="px-3 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                        Started At
                       </th>
                     </tr>
                   </thead>
@@ -308,46 +433,46 @@ export default function WatchHistory() {
                     ) : (
                       history.items.map((item) => (
                         <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-700">
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-3 py-4 whitespace-nowrap">
                             <div className="flex items-center">
                               {item.media_type === 'episode' ? (
-                                <TvIcon className="h-5 w-5 text-slate-400 mr-3 flex-shrink-0" />
+                                <TvIcon className="h-5 w-5 text-slate-400 mr-2 flex-shrink-0" />
                               ) : (
-                                <FilmIcon className="h-5 w-5 text-slate-400 mr-3 flex-shrink-0" />
+                                <FilmIcon className="h-5 w-5 text-slate-400 mr-2 flex-shrink-0" />
                               )}
-                              <div className="min-w-0">
+                              <div>
                                 {formatTitle(item)}
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">
+                          <td className="px-3 py-4 text-sm text-slate-900 dark:text-white whitespace-nowrap">
                             {item.server_name}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <td className="px-3 py-4 text-sm whitespace-nowrap">
                             {formatResolution(item)}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">
+                          <td className="px-3 py-4 text-sm text-slate-900 dark:text-white whitespace-nowrap">
                             {formatBitrate(item.original_bitrate)}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <td className="px-3 py-4 text-sm whitespace-nowrap">
                             {formatPlayState(item.video_decision)}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-3 py-4 whitespace-nowrap">
                             <div className="flex items-center">
-                              <div className="flex-1 bg-slate-200 dark:bg-slate-700 rounded-full h-2 mr-2">
+                              <div className="w-20 bg-slate-200 dark:bg-slate-700 rounded-full h-2 mr-2">
                                 <div
                                   className="bg-blue-500 h-2 rounded-full"
                                   style={{ width: `${Math.min(100, item.progress_percent)}%` }}
                                 />
                               </div>
-                              <span className="text-sm text-slate-900 dark:text-white">
+                              <span className="text-sm text-slate-900 dark:text-white whitespace-nowrap">
                                 {Math.round(item.progress_percent)}%
                               </span>
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center text-sm text-slate-900 dark:text-white">
-                              <DevicePhoneMobileIcon className="h-4 w-4 text-slate-400 mr-2" />
+                          <td className="px-3 py-4 whitespace-nowrap">
+                            <div className="flex items-start text-sm text-slate-900 dark:text-white">
+                              <DevicePhoneMobileIcon className="h-4 w-4 text-slate-400 mr-2 mt-0.5 flex-shrink-0" />
                               <div>
                                 <div>{item.device || 'Unknown'}</div>
                                 {item.platform && (
@@ -356,7 +481,7 @@ export default function WatchHistory() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">
+                          <td className="px-3 py-4 text-sm text-slate-900 dark:text-white whitespace-nowrap">
                             {formatDate(item.started_at)}
                           </td>
                         </tr>

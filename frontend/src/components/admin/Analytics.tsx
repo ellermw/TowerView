@@ -1,5 +1,6 @@
 import React from 'react'
 import { useQuery } from 'react-query'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../../services/api'
 
 interface DashboardAnalytics {
@@ -10,6 +11,7 @@ interface DashboardAnalytics {
   transcode_rate: number
   top_users: Array<{
     username: string
+    provider_user_id: string
     server_name: string
     total_plays: number
     total_watch_time_minutes: number
@@ -42,6 +44,7 @@ interface DashboardAnalytics {
 }
 
 export default function Analytics() {
+  const navigate = useNavigate()
   const [filters, setFilters] = React.useState({
     server_id: undefined as number | undefined,
     days_back: 7
@@ -225,8 +228,13 @@ export default function Analytics() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">
                           #{index + 1}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-white">
-                          {user.username}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <button
+                            onClick={() => navigate(`/admin/users/${user.provider_user_id}/watch-history`)}
+                            className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline cursor-pointer"
+                          >
+                            {user.username}
+                          </button>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">
                           {user.server_name}

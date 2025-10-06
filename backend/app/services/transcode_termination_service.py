@@ -176,7 +176,7 @@ class TranscodeTerminationService:
             try:
                 # Create provider and terminate session
                 provider = ProviderFactory.create_provider(
-                    provider_type=server.server_type,
+                    provider_type=server.type,
                     server_url=server.url,
                     api_token=server.get_decrypted_token(),
                     username=server.get_decrypted_username(),
@@ -185,7 +185,7 @@ class TranscodeTerminationService:
                 )
 
                 # Only send message for Plex servers
-                termination_message = settings["message"] if server.server_type == "plex" else None
+                termination_message = settings["message"] if server.type == "plex" else None
 
                 success = await provider.terminate_session(
                     session_id=session["session_id"],
@@ -202,17 +202,19 @@ class TranscodeTerminationService:
                         if session_track_key in cls._session_start_times:
                             del cls._session_start_times[session_track_key]
 
-                    # Log the termination
-                    audit_log = AuditLog(
-                        user_id=1,  # System action
-                        action="terminate_session",
-                        target_type="session",
-                        target_id=session["session_id"],
+                    # Log the termination with System as actor
+                    from ..services.audit_service import AuditService
+                    AuditService.log_action(
+                        db=db,
+                        actor=None,  # None will show as "System"
+                        action="SESSION_TERMINATED",
+                        target="session",
+                        target_name=f"{username} - {session.get('title')}",
                         details={
                             "reason": "4K transcode auto-termination (5-second grace period exceeded)",
                             "server_id": server.id,
                             "server_name": server.name,
-                            "server_type": server.server_type,
+                            "server_type": str(server.type.value),
                             "username": username,
                             "title": session.get("title"),
                             "original_resolution": session.get("original_resolution"),
@@ -220,11 +222,8 @@ class TranscodeTerminationService:
                             "grace_period_seconds": cls.GRACE_PERIOD.total_seconds(),
                             "message_sent": termination_message if termination_message else "No message (non-Plex server)"
                         },
-                        ip_address="system",
-                        user_agent="TranscodeTerminationService"
+                        request=None
                     )
-                    db.add(audit_log)
-                    db.commit()
 
                     logger.info(f"Terminated 4K transcode for user {username} on {server.name}: {session.get('title')}")
                 else:

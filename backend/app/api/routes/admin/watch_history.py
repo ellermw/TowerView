@@ -13,7 +13,7 @@ from ....core.security import get_current_admin_or_local_user
 from ....models.user import User
 from ....models.playback_analytics import PlaybackEvent
 from ....models.server import Server
-from ....schemas.analytics import WatchHistoryResponse, WatchHistoryItemResponse
+from ....schemas.analytics import WatchHistoryResponse, WatchHistoryItemResponse, WatchHistorySummary
 
 router = APIRouter()
 
@@ -76,6 +76,24 @@ async def get_user_watch_history(
     # Get total count before pagination
     total = query.count()
 
+    # Calculate summary statistics from ALL matching records (not just paginated)
+    all_events = query.all()
+
+    total_streams = len(all_events)
+    total_watch_time_ms = sum(event.progress_ms or 0 for event, _ in all_events)
+
+    # Calculate completion rate (average of progress percentages >= 10%)
+    completion_rate = 0.0
+    events_with_min_progress = [event for event, _ in all_events if (event.progress_percent or 0) >= 10]
+    if len(events_with_min_progress) > 0:
+        completion_rate = sum(event.progress_percent or 0 for event in events_with_min_progress) / len(events_with_min_progress)
+
+    # Calculate transcode rate (percentage of transcoded streams)
+    transcode_rate = 0.0
+    if total_streams > 0:
+        transcode_count = sum(1 for event, _ in all_events if event.video_decision == 'transcode')
+        transcode_rate = (transcode_count / total_streams) * 100
+
     # Calculate pagination
     total_pages = math.ceil(total / page_size) if total > 0 else 1
     offset = (page - 1) * page_size
@@ -113,10 +131,19 @@ async def get_user_watch_history(
             ended_at=playback_event.ended_at
         ))
 
+    # Create summary
+    summary = WatchHistorySummary(
+        total_streams=total_streams,
+        total_watch_time_ms=total_watch_time_ms,
+        completion_rate=completion_rate,
+        transcode_rate=transcode_rate
+    )
+
     return WatchHistoryResponse(
         items=items,
         total=total,
         page=page,
         page_size=page_size,
-        total_pages=total_pages
+        total_pages=total_pages,
+        summary=summary
     )

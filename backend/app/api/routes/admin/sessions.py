@@ -111,12 +111,8 @@ async def terminate_session(
 
     # Permission checking based on user type
     if current_user.type == UserType.admin:
-        # Admins can terminate sessions on servers they own
-        if server.owner_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to manage this server"
-            )
+        # Admins can terminate sessions on any server
+        pass
     elif current_user.type in [UserType.staff, UserType.support]:
         # Staff/Support users need specific permission to terminate sessions
         server_permission = user_service.get_user_server_permission(current_user.id, server_id)
