@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-## Version 2.3.16 - Watch History & Auto-Refresh Improvements
+## Version 2.3.17 - Analytics Enhancements
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -51,7 +51,10 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 
 - **Dedicated Analytics Page**: Comprehensive analytics with category-based filtering
   - Filter by server, time period (24H, 7D, 30D, 180D, 365D), and category
-  - Categories: Top Users, Top Movies, Top TV Shows, Top Libraries, Top Devices
+  - Categories: Top Users, Top Movies, Top TV Shows, Top Libraries, **Top Clients**, **Top Devices**
+  - **Top Clients**: Shows media player applications (Plex for Roku, Emby for Apple TV, etc.)
+  - **Top Devices**: Shows physical hardware devices (Apple TV, TCL Roku TV, Fire TV, etc.)
+  - Intelligent name normalization combines similar variants automatically
   - Shows up to 100 items per category (vs 5 on dashboard)
   - Summary cards: Total Sessions, Active Users, Watch Time, Completion Rate, Transcode Rate
   - Available to Admin, Staff, and Support users
@@ -398,7 +401,26 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.16 (Current)
+### Version 2.3.17 (Current)
+
+- **Analytics Enhancements - Client vs Device Separation**:
+  - Split analytics into two separate categories: **Top Clients** and **Top Devices**
+  - **Top Clients** now shows media player applications:
+    - Displays which apps users are using (Plex for Roku, Emby for Apple TV, Jellyfin for Android TV, etc.)
+    - Includes third-party clients (Infuse, VidHub, SenPlayer, MrMC, Kodi)
+    - Intelligent normalization combines variants (e.g., "Plex for Android (TV)" → "Plex for Android TV")
+    - Data sourced from `PlaybackEvent.product` field
+  - **Top Devices** now shows physical hardware:
+    - Displays actual devices being used (Apple TV, TCL Roku TV, Fire TV, etc.)
+    - Combines user-named devices (e.g., "Ant's Fire TV" → "Fire TV")
+    - Preserves TV brand names for granular data (TCL Roku TV vs Hisense Roku TV)
+    - Data sourced from `PlaybackEvent.device` field
+  - New normalization functions: `normalize_client_name()` and `normalize_device_name()`
+  - Backend methods: `get_top_clients()` and `get_top_devices()` in `AnalyticsService`
+  - Schema updates: Added `TopClientResponse` to support both categories
+  - Frontend updates: Two separate dropdowns for Clients and Devices with descriptive subtitles
+
+### Version 2.3.16
 
 - **Watch History Feature**:
   - Click any username on Dashboard or Users page to view their complete watch history
@@ -486,13 +508,14 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 - **Analytics Page**:
   - New dedicated Analytics page accessible from navigation bar
   - Visible to Admin, Staff, and Support users (not media users)
-  - Category-based filtering: Top Users, Movies, TV Shows, Libraries, Devices
+  - Category-based filtering: Top Users, Movies, TV Shows, Libraries, Clients, Devices
   - Time period filters: Last 24 Hours, 7 Days, 30 Days, 180 Days, 365 Days
   - Server-specific filtering or view all servers combined
   - Shows up to 100 items per category (vs 5 on dashboard)
   - Summary cards for quick overview of key metrics
   - Only selected category displayed at a time (no "show all" option)
   - Located between Management and Audit Logs in navigation
+  - Enhanced in v2.3.17 with separate Client and Device analytics
 
 ### Version 2.3.10
 

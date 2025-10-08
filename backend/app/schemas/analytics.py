@@ -46,10 +46,19 @@ class TopDeviceResponse(BaseModel):
     device_name: str
     platform: Optional[str] = None
     product: Optional[str] = None
-    total_sessions: int
+    total_plays: int  # Changed from total_sessions to match frontend
     unique_users: int
     total_watch_time_minutes: int
     transcode_percentage: float  # percentage of sessions that required transcoding
+
+
+class TopClientResponse(BaseModel):
+    client_name: str
+    platform: Optional[str] = None
+    total_plays: int
+    unique_users: int
+    total_watch_time_minutes: int
+    transcode_percentage: float
 
 
 class DashboardAnalyticsResponse(BaseModel):
@@ -59,6 +68,7 @@ class DashboardAnalyticsResponse(BaseModel):
     top_tv_shows: List[TopMediaResponse]
     top_libraries: List[TopLibraryResponse]
     top_devices: List[TopDeviceResponse]
+    top_clients: List[TopClientResponse]
 
     # Summary stats
     total_sessions: int

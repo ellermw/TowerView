@@ -37,7 +37,12 @@ interface DashboardAnalytics {
     unique_users: number
   }>
   top_devices: Array<{
-    device: string
+    device_name: string
+    platform: string
+    total_plays: number
+  }>
+  top_clients: Array<{
+    client_name: string
     platform: string
     total_plays: number
   }>
@@ -138,6 +143,7 @@ export default function Analytics() {
                 <option value="movies">Top Movies</option>
                 <option value="shows">Top TV Shows</option>
                 <option value="libraries">Top Libraries</option>
+                <option value="clients">Top Clients</option>
                 <option value="devices">Top Devices</option>
               </select>
             </div>
@@ -405,11 +411,44 @@ export default function Analytics() {
             </div>
             )}
 
+            {/* Top Clients */}
+            {selectedCategory === 'clients' && (
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow mb-6">
+                <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+                  <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Top Clients</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Most used media player applications</p>
+                </div>
+                <div className="p-6">
+                  <div className="space-y-3">
+                    {analytics.top_clients?.map((client, index) => (
+                      <div key={index} className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="text-lg font-bold text-slate-400">#{index + 1}</div>
+                          <div>
+                            <div className="font-medium text-slate-900 dark:text-white">
+                              {client.client_name}
+                            </div>
+                            <div className="text-sm text-slate-600 dark:text-slate-400">
+                              {client.platform}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-lg font-bold text-slate-900 dark:text-white">
+                          {client.total_plays} plays
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+            </div>
+            )}
+
             {/* Top Devices */}
             {selectedCategory === 'devices' && (
             <div className="bg-white dark:bg-slate-800 rounded-lg shadow mb-6">
                 <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
                   <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Top Devices</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Most used physical devices</p>
                 </div>
                 <div className="p-6">
                   <div className="space-y-3">
@@ -419,7 +458,7 @@ export default function Analytics() {
                           <div className="text-lg font-bold text-slate-400">#{index + 1}</div>
                           <div>
                             <div className="font-medium text-slate-900 dark:text-white">
-                              {device.device}
+                              {device.device_name}
                             </div>
                             <div className="text-sm text-slate-600 dark:text-slate-400">
                               {device.platform}

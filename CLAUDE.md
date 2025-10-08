@@ -595,23 +595,35 @@ New feature in v2.3.9 allows automatic termination of 4K to 1080p (or below) tra
 
 ### Analytics Page
 
-New dedicated Analytics page in v2.3.11:
+New dedicated Analytics page in v2.3.11+ (enhanced in v2.3.17):
 - **Location**: Navigation bar between Management and Audit Logs
 - **Access**: Visible to all system users (Admin, Staff, Support) but NOT media users
 - **Features**:
   - Server filter: View analytics for all servers or a specific server
   - Time period filter: Last 24 Hours, 7 Days, 30 Days, 180 Days, 365 Days (defaults to 7 days)
-  - Category filter: Top Users, Top Movies, Top TV Shows, Top Libraries, Top Devices
+  - Category filter: Top Users, Top Movies, Top TV Shows, Top Libraries, **Top Clients**, **Top Devices**
   - Summary cards: Total Sessions, Active Users, Watch Time, Completion Rate, Transcode Rate
   - Detailed tables: Shows up to 100 items per category (vs 5 on dashboard)
   - Category-specific view: Only selected category displayed at a time (no "show all" option)
+
+**Top Clients vs Top Devices** (v2.3.17):
+- **Top Clients**: Shows media player applications (e.g., "Plex for Roku", "Emby for Apple TV", "Jellyfin for Android TV")
+  - Normalized client names combine variants (e.g., "Plex for Android (TV)" → "Plex for Android TV")
+  - Supports Plex, Emby, Jellyfin clients plus third-party apps (Infuse, VidHub, SenPlayer, etc.)
+- **Top Devices**: Shows physical hardware devices (e.g., "Apple TV", "TCL Roku TV", "Fire TV")
+  - Normalized device names combine user-named variants (e.g., "Ant's Fire TV" → "Fire TV")
+  - Preserves TV brand names for better granularity (TCL Roku TV, Hisense Roku TV, etc.)
+  - Data pulled from `PlaybackEvent.device` field vs `PlaybackEvent.product` field for clients
+
 - **Implementation**:
   - Frontend: `/frontend/src/components/admin/Analytics.tsx`
   - Route: `/admin/analytics` in AdminDashboard.tsx
   - Navigation: Layout.tsx with role-based visibility
   - Backend: Uses existing `/admin/analytics` endpoint with 100-item limit
   - Data source: `analytics_service.py` queries playback_events table
+  - Service methods: `get_top_clients()` and `get_top_devices()` with normalization
+  - Normalization: `normalize_client_name()` and `normalize_device_name()` in `AnalyticsService`
 - **React Query Configuration**:
-  - `staleTime: 0` - Always fetch fresh data on filter change
-  - `cacheTime: 0` - No caching to ensure filters work correctly
+  - `staleTime: 30000` - Consider data fresh for 30 seconds
+  - `cacheTime: 300000` - Keep in cache for 5 minutes
   - Query key includes filters for proper cache invalidation

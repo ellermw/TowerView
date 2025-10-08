@@ -2,11 +2,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, desc, text, case
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
+from collections import defaultdict
 from ..models.playback_analytics import PlaybackEvent, DailyAnalytics
 from ..models.server import Server
 from ..schemas.analytics import (
     AnalyticsFilters, TopUserResponse, TopMediaResponse,
-    TopLibraryResponse, TopDeviceResponse, DashboardAnalyticsResponse,
+    TopLibraryResponse, TopDeviceResponse, TopClientResponse, DashboardAnalyticsResponse,
     PlaybackEventCreate
 )
 
@@ -14,6 +15,163 @@ from ..schemas.analytics import (
 class AnalyticsService:
     def __init__(self, db: Session):
         self.db = db
+
+    @staticmethod
+    def normalize_device_name(device: str) -> str:
+        """Normalize device names to combine similar variants"""
+        if not device:
+            return "Unknown Device"
+
+        device_lower = device.lower().strip()
+
+        # Apple TV variants (including user-named ones)
+        if "apple tv" in device_lower or device_lower == "appletv":
+            return "Apple TV"
+
+        # Roku TV variants (combine all Roku devices)
+        if "roku" in device_lower:
+            # If it's a specific TV brand, keep more detail
+            if "tcl" in device_lower:
+                return "TCL Roku TV"
+            elif "hisense" in device_lower:
+                return "Hisense Roku TV"
+            elif "rca" in device_lower:
+                return "RCA Roku TV"
+            elif "sharp" in device_lower:
+                return "Sharp Roku TV"
+            else:
+                return "Roku"
+
+        # Fire TV variants (user-named Fire TVs)
+        if "fire tv" in device_lower or "firetv" in device_lower:
+            return "Fire TV"
+
+        # Android TV generic (user-named Android TVs)
+        if "android" in device_lower and ("tv" in device_lower or device_lower in ["aftka", "aftsss"]):
+            return "Android TV"
+
+        # Smart TV variants
+        if "smart tv" in device_lower or "smarttv" in device_lower:
+            return "Smart TV"
+
+        # Chromecast variants
+        if "chromecast" in device_lower:
+            return "Chromecast"
+
+        # iPhone/iPad
+        if "iphone" in device_lower:
+            return "iPhone"
+        if "ipad" in device_lower:
+            return "iPad"
+
+        # Desktop/Web browsers
+        if "chrome" in device_lower and "cast" not in device_lower:
+            return "Chrome Browser"
+        if "firefox" in device_lower:
+            return "Firefox Browser"
+        if "safari" in device_lower:
+            return "Safari Browser"
+        if "edge" in device_lower:
+            return "Edge Browser"
+
+        # Gaming consoles
+        if "xbox" in device_lower:
+            return "Xbox"
+        if "playstation" in device_lower or "ps4" in device_lower or "ps5" in device_lower:
+            return "PlayStation"
+
+        # Keep original if no match (useful for user-named devices)
+        return device.strip()
+
+    @staticmethod
+    def normalize_client_name(product: str) -> str:
+        """Normalize client/product names to combine similar variants"""
+        if not product:
+            return "Unknown Client"
+
+        product_lower = product.lower().strip()
+
+        # Plex clients
+        if "plex" in product_lower:
+            if "android" in product_lower and "tv" in product_lower:
+                return "Plex for Android TV"
+            elif "android" in product_lower:
+                return "Plex for Android"
+            elif "apple tv" in product_lower or "appletv" in product_lower or "tvos" in product_lower:
+                return "Plex for Apple TV"
+            elif "roku" in product_lower:
+                return "Plex for Roku"
+            elif "ios" in product_lower or "iphone" in product_lower:
+                return "Plex for iOS"
+            elif "web" in product_lower or "chrome" in product_lower or "firefox" in product_lower or "safari" in product_lower:
+                return "Plex Web"
+            elif "xbox" in product_lower:
+                return "Plex for Xbox"
+            elif "playstation" in product_lower or "ps4" in product_lower or "ps5" in product_lower:
+                return "Plex for PlayStation"
+            else:
+                return "Plex"
+
+        # Emby clients
+        if "emby" in product_lower:
+            if "apple tv" in product_lower or "appletv" in product_lower:
+                return "Emby for Apple TV"
+            elif "android" in product_lower and "tv" in product_lower:
+                return "Emby for Android TV"
+            elif "android" in product_lower:
+                return "Emby for Android"
+            elif "roku" in product_lower:
+                return "Emby for Roku"
+            elif "ios" in product_lower:
+                return "Emby for iOS"
+            elif "web" in product_lower:
+                return "Emby Web"
+            else:
+                return "Emby"
+
+        # Jellyfin clients
+        if "jellyfin" in product_lower:
+            if "roku" in product_lower:
+                return "Jellyfin for Roku"
+            elif "android" in product_lower and "tv" in product_lower:
+                return "Jellyfin for Android TV"
+            elif "android" in product_lower:
+                return "Jellyfin for Android"
+            elif "apple tv" in product_lower or "appletv" in product_lower or "tvos" in product_lower:
+                return "Jellyfin for Apple TV"
+            elif "ios" in product_lower:
+                return "Jellyfin for iOS"
+            elif "media player" in product_lower:
+                return "Jellyfin Media Player"
+            elif "web" in product_lower:
+                return "Jellyfin Web"
+            else:
+                return "Jellyfin"
+
+        # Third-party clients
+        if "infuse" in product_lower:
+            return "Infuse"
+        if "vidhub" in product_lower:
+            return "VidHub"
+        if "senplayer" in product_lower:
+            return "SenPlayer"
+        if "mrmc" in product_lower:
+            return "MrMC"
+        if "kodi" in product_lower:
+            return "Kodi"
+
+        # Android TV variants (standalone)
+        if ("androidtv" in product_lower.replace(" ", "") or
+            "android tv" in product_lower or
+            "android_tv" in product_lower):
+            return "Android TV"
+
+        # Roku variants (standalone)
+        if "roku" in product_lower:
+            return "Roku"
+
+        # Return original if no match found (capitalize first letter of each word)
+        return " ".join(word.capitalize() for word in product.split())
 
     def create_playback_event(self, server_id: int, event_data: PlaybackEventCreate) -> PlaybackEvent:
         """Create a new playback event for analytics tracking"""
@@ -220,47 +378,136 @@ class AnalyticsService:
             ))
         return results
 
-    def get_top_devices(self, filters: AnalyticsFilters, limit: int = 5, allowed_server_ids: Optional[List[int]] = None) -> List[TopDeviceResponse]:
-        """Get most used devices"""
+    def get_top_clients(self, filters: AnalyticsFilters, limit: int = 5, allowed_server_ids: Optional[List[int]] = None) -> List[TopClientResponse]:
+        """Get most used clients (products) with normalized names"""
+        # Get all playback data
         query = self.db.query(
             PlaybackEvent.device,
             PlaybackEvent.platform,
             PlaybackEvent.product,
-            func.count(PlaybackEvent.id).label('total_sessions'),
-            func.count(func.distinct(PlaybackEvent.username)).label('unique_users'),
-            func.sum(
-                case(
-                    (PlaybackEvent.progress_ms > 0, PlaybackEvent.progress_ms),
-                    else_=0
-                ) / 60000
-            ).label('total_watch_time_minutes'),
-            func.avg(
-                case(
-                    (PlaybackEvent.video_decision == 'transcode', 1.0),
-                    else_=0.0
-                )
-            ).label('transcode_percentage')
+            PlaybackEvent.username,
+            PlaybackEvent.progress_ms,
+            PlaybackEvent.video_decision
         ).filter(and_(
              self.get_date_filter(filters),
              self.get_server_filter(filters, allowed_server_ids),
-             PlaybackEvent.device.isnot(None)
-         ))\
-         .group_by(PlaybackEvent.device, PlaybackEvent.platform, PlaybackEvent.product)\
-         .order_by(desc('total_sessions'))\
-         .limit(limit)
+             PlaybackEvent.product.isnot(None)  # Filter by product
+         ))
 
-        results = []
+        # Aggregate by normalized client name (product)
+        client_stats = defaultdict(lambda: {
+            'total_plays': 0,
+            'unique_users': set(),
+            'total_watch_time_ms': 0,
+            'transcode_count': 0,
+            'platform': None,
+            'devices': set()  # Track unique devices using this client
+        })
+
         for row in query:
-            results.append(TopDeviceResponse(
-                device_name=row.device,
-                platform=row.platform,
-                product=row.product,
-                total_sessions=row.total_sessions,
-                unique_users=row.unique_users,
-                total_watch_time_minutes=int(row.total_watch_time_minutes or 0),
-                transcode_percentage=float((row.transcode_percentage or 0) * 100)
+            normalized_client = self.normalize_client_name(row.product)
+            stats = client_stats[normalized_client]
+
+            stats['total_plays'] += 1
+            if row.username:
+                stats['unique_users'].add(row.username)
+            if row.progress_ms and row.progress_ms > 0:
+                stats['total_watch_time_ms'] += row.progress_ms
+            if row.video_decision == 'transcode':
+                stats['transcode_count'] += 1
+
+            # Track devices and platform
+            if row.device:
+                stats['devices'].add(row.device)
+            if not stats['platform'] and row.platform:
+                stats['platform'] = row.platform
+
+        # Convert to TopClientResponse objects
+        results = []
+        for client_name, stats in client_stats.items():
+            transcode_percentage = (stats['transcode_count'] / stats['total_plays'] * 100) if stats['total_plays'] > 0 else 0
+
+            # Use platform as the subtitle
+            platform_text = stats['platform'] if stats['platform'] else f"{len(stats['devices'])} devices"
+
+            results.append(TopClientResponse(
+                client_name=client_name,  # Client name (e.g., "Plex for Roku")
+                platform=platform_text,  # Platform or device count
+                total_plays=stats['total_plays'],
+                unique_users=len(stats['unique_users']),
+                total_watch_time_minutes=int(stats['total_watch_time_ms'] / 60000),
+                transcode_percentage=transcode_percentage
             ))
-        return results
+
+        # Sort by total_plays descending and limit
+        results.sort(key=lambda x: x.total_plays, reverse=True)
+        return results[:limit]
+
+    def get_top_devices(self, filters: AnalyticsFilters, limit: int = 5, allowed_server_ids: Optional[List[int]] = None) -> List[TopDeviceResponse]:
+        """Get most used devices with normalized names"""
+        # Get all playback data
+        query = self.db.query(
+            PlaybackEvent.device,
+            PlaybackEvent.platform,
+            PlaybackEvent.product,
+            PlaybackEvent.username,
+            PlaybackEvent.progress_ms,
+            PlaybackEvent.video_decision
+        ).filter(and_(
+             self.get_date_filter(filters),
+             self.get_server_filter(filters, allowed_server_ids),
+             PlaybackEvent.device.isnot(None)  # Filter by device
+         ))
+
+        # Aggregate by normalized device name
+        device_stats = defaultdict(lambda: {
+            'total_plays': 0,
+            'unique_users': set(),
+            'total_watch_time_ms': 0,
+            'transcode_count': 0,
+            'platform': None,
+            'clients': set()  # Track unique clients used on this device
+        })
+
+        for row in query:
+            normalized_device = self.normalize_device_name(row.device)
+            stats = device_stats[normalized_device]
+
+            stats['total_plays'] += 1
+            if row.username:
+                stats['unique_users'].add(row.username)
+            if row.progress_ms and row.progress_ms > 0:
+                stats['total_watch_time_ms'] += row.progress_ms
+            if row.video_decision == 'transcode':
+                stats['transcode_count'] += 1
+
+            # Track clients and platform
+            if row.product:
+                stats['clients'].add(row.product)
+            if not stats['platform'] and row.platform:
+                stats['platform'] = row.platform
+
+        # Convert to TopDeviceResponse objects
+        results = []
+        for device_name, stats in device_stats.items():
+            transcode_percentage = (stats['transcode_count'] / stats['total_plays'] * 100) if stats['total_plays'] > 0 else 0
+
+            # Show platform or client count as subtitle
+            platform_text = stats['platform'] if stats['platform'] else f"{len(stats['clients'])} clients"
+
+            results.append(TopDeviceResponse(
+                device_name=device_name,  # Device name (e.g., "Apple TV", "TCL Roku TV")
+                platform=platform_text,  # Platform or client count
+                product=None,
+                total_plays=stats['total_plays'],
+                unique_users=len(stats['unique_users']),
+                total_watch_time_minutes=int(stats['total_watch_time_ms'] / 60000),
+                transcode_percentage=transcode_percentage
+            ))
+
+        # Sort by total_plays descending and limit
+        results.sort(key=lambda x: x.total_plays, reverse=True)
+        return results[:limit]
 
     def get_dashboard_analytics(self, filters: AnalyticsFilters, allowed_server_ids: Optional[List[int]] = None) -> DashboardAnalyticsResponse:
         """Get comprehensive analytics for dashboard"""
@@ -307,6 +554,7 @@ class AnalyticsService:
             top_tv_shows=self.get_top_tv_shows(filters, limit=100, allowed_server_ids=allowed_server_ids),
             top_libraries=self.get_top_libraries(filters, limit=100, allowed_server_ids=allowed_server_ids),
             top_devices=self.get_top_devices(filters, limit=100, allowed_server_ids=allowed_server_ids),
+            top_clients=self.get_top_clients(filters, limit=100, allowed_server_ids=allowed_server_ids),
             total_sessions=total_sessions,
             total_users=total_users,
             total_watch_time_hours=total_watch_time_hours,
