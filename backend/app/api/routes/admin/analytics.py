@@ -130,7 +130,8 @@ async def get_analytics(
                 "quality_distribution": [],
                 "transcode_vs_direct": {"direct_play": 0, "transcode": 0},
                 "completion_rate": 0,
-                "transcode_rate": 0
+                "video_transcode_rate": 0,
+                "audio_transcode_rate": 0
             }
 
         allowed_server_ids = [p.server_id for p in permissions]
@@ -163,7 +164,8 @@ async def get_analytics(
             "quality_distribution": [],
             "transcode_vs_direct": {"direct_play": 0, "transcode": 0},
             "completion_rate": 0,
-            "transcode_rate": 0
+            "video_transcode_rate": 0,
+            "audio_transcode_rate": 0
         }
 
 

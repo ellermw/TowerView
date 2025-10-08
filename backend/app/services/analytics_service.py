@@ -294,8 +294,8 @@ class AnalyticsService:
                 title=row.media_title,
                 media_type='movie',
                 provider_media_id=row.provider_media_id,
-                server_name=row.server_names,  # Now shows all servers
-                year=row.year,
+                server_name=row.server_names or "",  # Comma-separated server names
+                year=row.year or "",
                 total_plays=row.total_plays,
                 unique_users=row.unique_users,
                 total_watch_time_minutes=int(row.total_watch_time_minutes or 0)
@@ -332,8 +332,8 @@ class AnalyticsService:
             results.append(TopMediaResponse(
                 title=row.grandparent_title,
                 media_type='tv_show',
-                server_name=row.server_names,  # Now shows all servers
-                year=row.year,
+                server_name=row.server_names or "",  # Comma-separated server names
+                year=row.year or "",
                 total_plays=row.total_plays,
                 unique_users=row.unique_users,
                 total_watch_time_minutes=int(row.total_watch_time_minutes or 0),
@@ -543,9 +543,22 @@ class AnalyticsService:
         ).count()
         completion_rate = (completed_plays / sessions_with_min_progress * 100) if sessions_with_min_progress > 0 else 0
 
-        # Transcode rate
-        transcoded_sessions = base_query.filter(PlaybackEvent.video_decision == 'transcode').count()
-        transcode_rate = (transcoded_sessions / total_sessions * 100) if total_sessions > 0 else 0
+        # Transcode rates - separate HW (video) and SW (audio/other)
+        hw_transcoded_sessions = base_query.filter(
+            and_(
+                PlaybackEvent.video_decision == 'transcode',
+                PlaybackEvent.is_hw_transcode == True
+            )
+        ).count()
+        sw_transcoded_sessions = base_query.filter(
+            and_(
+                PlaybackEvent.video_decision == 'transcode',
+                PlaybackEvent.is_hw_transcode == False
+            )
+        ).count()
+
+        video_transcode_rate = (hw_transcoded_sessions / total_sessions * 100) if total_sessions > 0 else 0
+        audio_transcode_rate = (sw_transcoded_sessions / total_sessions * 100) if total_sessions > 0 else 0
 
         return DashboardAnalyticsResponse(
             filters=filters,
@@ -559,5 +572,6 @@ class AnalyticsService:
             total_users=total_users,
             total_watch_time_hours=total_watch_time_hours,
             completion_rate=completion_rate,
-            transcode_rate=transcode_rate
+            video_transcode_rate=video_transcode_rate,
+            audio_transcode_rate=audio_transcode_rate
         )

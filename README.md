@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-## Version 2.3.17 - Analytics Enhancements
+## Version 2.3.18 - UI & Analytics Improvements
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -401,7 +401,47 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.17 (Current)
+### Version 2.3.18 (Current)
+
+- **Transcode Analytics Enhancement**:
+  - Split transcode tracking into **Video Transcode** (HW transcoding) and **Audio/Other Transcode** (SW transcoding)
+  - Dashboard Overview now shows both transcode rates separately
+  - Analytics page displays both rates in summary cards
+  - Added `is_hw_transcode` field to `playback_events` table
+  - Video transcodes detected by hardware acceleration flags (HW decode/encode)
+  - Audio/other transcodes are software-only (audio conversion, subtitle burning, etc.)
+
+- **Bandwidth Graph Improvements**:
+  - **Color-coded by server type**: Plex (orange), Emby (green), Jellyfin (blue)
+  - **Maximum contrast shading**: First two servers of each type use drastically different shades
+  - **Interactive tooltips**: Hover over graph to see server names and exact bandwidth at that moment
+  - Tooltips show all active servers sorted by bandwidth (highest to lowest)
+  - Color-coded dots in tooltip match graph line colors
+
+- **Auto-Hide Navigation Bar**:
+  - Navigation bar now hides when scrolling down for more screen space
+  - Automatically reappears when scrolling up
+  - Smooth 300ms slide animation
+  - Always visible at top of page (< 10px scroll)
+  - Fixed positioning with proper content padding
+
+- **Portainer Persistence Fix**:
+  - Configuration now displays even if connection test fails
+  - Added warning banner when Portainer is configured but not connected
+  - Improved error logging for connection issues
+  - Container mappings always visible if saved (regardless of connection status)
+
+- **Container Update Fix**:
+  - Container updates now force `:latest` tag pull instead of keeping specific versions
+  - Prevents pulling beta/development versions when updating
+  - Added logging to show current vs target image during updates
+
+- **Analytics Display Fixes**:
+  - Fixed field name mismatches preventing Top Movies/Shows/Libraries from displaying
+  - Corrected interface to use `top_tv_shows` instead of `top_shows`
+  - Fixed schema field mappings: `title`, `server_name`, `library_name`
+
+### Version 2.3.17
 
 - **Analytics Enhancements - Client vs Device Separation**:
   - Split analytics into two separate categories: **Top Clients** and **Top Devices**

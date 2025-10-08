@@ -473,9 +473,18 @@ class PortainerService:
                 image_name = container_info.get("Config", {}).get("Image", "")
                 container_name = container_info.get("Name", "").lstrip("/")
 
+            # Force :latest tag for updates (strip any existing tag like :beta or version)
+            # This ensures we pull the latest stable release, not beta/development versions
+            image_base = image_name.split(':')[0] if ':' in image_name else image_name
+            image_to_pull = f"{image_base}:latest"
+
+            logger.info(f"Updating container: {container_name}")
+            logger.info(f"Current image: {image_name}")
+            logger.info(f"Pulling image: {image_to_pull}")
+
             # Pull the latest image
             pull_url = f"{url}/api/endpoints/{endpoint_id}/docker/images/create"
-            pull_params = {"fromImage": image_name}
+            pull_params = {"fromImage": image_to_pull}
 
             async with self.session.post(pull_url, headers=headers, params=pull_params, ssl=False) as response:
                 if response.status not in [200, 201]:
@@ -500,9 +509,9 @@ class PortainerService:
             create_url = f"{url}/api/endpoints/{endpoint_id}/docker/containers/create"
             create_params = {"name": container_name}
 
-            # Use the original container config
+            # Use the original container config but with :latest image
             create_body = {
-                "Image": image_name,
+                "Image": image_to_pull,  # Use :latest tag instead of specific version
                 "Env": container_info.get("Config", {}).get("Env", []),
                 "ExposedPorts": container_info.get("Config", {}).get("ExposedPorts", {}),
                 "HostConfig": {

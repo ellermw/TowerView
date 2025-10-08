@@ -155,7 +155,8 @@ interface DashboardAnalytics {
   total_users: number
   total_watch_time_hours: number
   completion_rate: number
-  transcode_rate: number
+  video_transcode_rate: number
+  audio_transcode_rate: number
 }
 
 interface BandwidthDataPoint {
@@ -342,21 +343,33 @@ export default function AdminHome() {
   // Client-side bandwidth tracking removed - now using server-side cache
   // Server tracks bandwidth every 5 seconds and keeps 90 seconds of history (18 data points)
 
-  // Generate server colors
+  // Generate server colors based on server type
   const getServerColors = () => {
-    const colors = [
-      '#3B82F6', // blue
-      '#EF4444', // red
-      '#10B981', // green
-      '#F59E0B', // yellow
-      '#8B5CF6', // purple
-      '#F97316', // orange
-      '#06B6D4', // cyan
-      '#EC4899', // pink
-      '#6B7280', // gray
-      '#84CC16', // lime
-      '#F472B6', // pink-400
-      '#14B8A6', // teal
+    // Color palettes for each server type - ordered for maximum contrast
+    // For 1-2 servers: use first two (most different)
+    // For 3+ servers: use all shades
+    const plexColors = [
+      '#EA580C', // orange-600 (dark)
+      '#FDBA74', // orange-300 (light)
+      '#F97316', // orange-500 (medium)
+      '#FB923C', // orange-400
+      '#C2410C', // orange-700 (darkest)
+    ]
+
+    const embyColors = [
+      '#059669', // emerald-600 (dark)
+      '#6EE7B7', // emerald-300 (light)
+      '#10B981', // emerald-500 (medium)
+      '#34D399', // emerald-400
+      '#047857', // emerald-700 (darkest)
+    ]
+
+    const jellyfinColors = [
+      '#2563EB', // blue-600 (dark)
+      '#93C5FD', // blue-300 (light)
+      '#3B82F6', // blue-500 (medium)
+      '#60A5FA', // blue-400
+      '#1D4ED8', // blue-700 (darkest)
     ]
 
     const serverNames = new Set<string>()
@@ -372,9 +385,43 @@ export default function AdminHome() {
     }
 
     const serverColorMap: Record<string, string> = {}
-    Array.from(serverNames).forEach((server, index) => {
-      // Never assign white (#FFFFFF) to servers - it's reserved for Total
-      serverColorMap[server] = colors[index % colors.length]
+
+    // Group servers by type
+    const plexServers: string[] = []
+    const embyServers: string[] = []
+    const jellyfinServers: string[] = []
+    const unknownServers: string[] = []
+
+    Array.from(serverNames).forEach((serverName) => {
+      const server = servers.find((s: any) => s.name === serverName)
+      if (server) {
+        const type = server.type.toLowerCase()
+        if (type === 'plex') {
+          plexServers.push(serverName)
+        } else if (type === 'emby') {
+          embyServers.push(serverName)
+        } else if (type === 'jellyfin') {
+          jellyfinServers.push(serverName)
+        } else {
+          unknownServers.push(serverName)
+        }
+      } else {
+        unknownServers.push(serverName)
+      }
+    })
+
+    // Assign colors by type - colors are already ordered for maximum contrast
+    plexServers.forEach((server, index) => {
+      serverColorMap[server] = plexColors[index % plexColors.length]
+    })
+    embyServers.forEach((server, index) => {
+      serverColorMap[server] = embyColors[index % embyColors.length]
+    })
+    jellyfinServers.forEach((server, index) => {
+      serverColorMap[server] = jellyfinColors[index % jellyfinColors.length]
+    })
+    unknownServers.forEach((server, index) => {
+      serverColorMap[server] = '#6B7280' // gray for unknown
     })
 
     return serverColorMap
@@ -637,6 +684,18 @@ export default function AdminHome() {
 
   // Bandwidth graph component
   const BandwidthGraph = () => {
+    const [tooltip, setTooltip] = React.useState<{
+      visible: boolean
+      x: number
+      y: number
+      servers: Array<{ name: string; bandwidth: number; color: string }>
+    }>({
+      visible: false,
+      x: 0,
+      y: 0,
+      servers: []
+    })
+
     if (bandwidthHistory.length === 0) {
       return (
         <div>
@@ -727,6 +786,42 @@ export default function AdminHome() {
       adjustedMinBandwidth
     ]
 
+    const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+      const svg = e.currentTarget
+      const rect = svg.getBoundingClientRect()
+      const x = ((e.clientX - rect.left) / rect.width) * 800 // Convert to viewBox coords
+
+      // Find closest data point
+      const pointIndex = Math.round((x / 800) * (bandwidthHistory.length - 1))
+      if (pointIndex >= 0 && pointIndex < bandwidthHistory.length) {
+        const point = bandwidthHistory[pointIndex]
+        const servers = point.serverBandwidths || point.server_bandwidths || {}
+
+        // Build server list for tooltip
+        const serverList = Object.entries(servers)
+          .filter(([name, bw]) => bw > 0)
+          .map(([name, bw]) => ({
+            name,
+            bandwidth: bw as number,
+            color: serverColors[name] || '#6B7280'
+          }))
+          .sort((a, b) => b.bandwidth - a.bandwidth) // Sort by bandwidth descending
+
+        if (serverList.length > 0) {
+          setTooltip({
+            visible: true,
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+            servers: serverList
+          })
+        }
+      }
+    }
+
+    const handleMouseLeave = () => {
+      setTooltip({ visible: false, x: 0, y: 0, servers: [] })
+    }
+
     return (
       <div>
         {/* Graph Container with Y-axis labels */}
@@ -734,7 +829,13 @@ export default function AdminHome() {
           {/* Graph area */}
           <div className="flex-1 bg-slate-50 dark:bg-slate-800 rounded-lg p-2 relative">
             <div className="absolute inset-2">
-            <svg className="w-full h-full" viewBox="0 0 800 100" preserveAspectRatio="none">
+            <svg
+              className="w-full h-full"
+              viewBox="0 0 800 100"
+              preserveAspectRatio="none"
+              onMouseMove={handleMouseMove}
+              onMouseLeave={handleMouseLeave}
+            >
               {/* Grid lines */}
               <defs>
                 <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
@@ -840,6 +941,31 @@ export default function AdminHome() {
                 )
               })}
             </svg>
+
+            {/* Tooltip */}
+            {tooltip.visible && tooltip.servers.length > 0 && (
+              <div
+                className="absolute pointer-events-none z-50 bg-slate-900 dark:bg-slate-700 text-white rounded-lg shadow-lg px-3 py-2 text-xs"
+                style={{
+                  left: `${tooltip.x + 10}px`,
+                  top: `${tooltip.y - 10}px`,
+                  transform: 'translateY(-100%)'
+                }}
+              >
+                {tooltip.servers.map((server, idx) => (
+                  <div key={idx} className="flex items-center justify-between gap-3 whitespace-nowrap py-0.5">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: server.color }}
+                      />
+                      <span className="font-medium">{server.name}</span>
+                    </div>
+                    <span className="text-slate-300">{formatBitrate(server.bandwidth)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             </div>
           </div>
 
@@ -1429,7 +1555,7 @@ export default function AdminHome() {
             <div className="card md:col-span-2 lg:col-span-3">
               <div className="card-body">
                 <h3 className="font-semibold text-slate-900 dark:text-white mb-4">Overview</h3>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                       {analytics?.total_sessions || 0}
@@ -1456,9 +1582,15 @@ export default function AdminHome() {
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                      {analytics?.transcode_rate?.toFixed(1) || 0}%
+                      {analytics?.video_transcode_rate?.toFixed(1) || 0}%
                     </div>
-                    <div className="text-xs text-slate-600 dark:text-slate-400">Transcode Rate</div>
+                    <div className="text-xs text-slate-600 dark:text-slate-400">Video Transcode</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-pink-600 dark:text-pink-400">
+                      {analytics?.audio_transcode_rate?.toFixed(1) || 0}%
+                    </div>
+                    <div className="text-xs text-slate-600 dark:text-slate-400">Audio/Other</div>
                   </div>
                 </div>
               </div>

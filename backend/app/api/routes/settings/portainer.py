@@ -122,6 +122,9 @@ async def get_portainer_status(
     db: Session = Depends(get_db)
 ):
     """Get Portainer integration status"""
+    import logging
+    logger = logging.getLogger(__name__)
+
     # Look for any enabled Portainer integration (global)
     integration = db.query(PortainerIntegration).filter_by(enabled=True).first()
 
@@ -131,14 +134,25 @@ async def get_portainer_status(
             "message": "Portainer not configured"
         }
 
-    # Test connection with fresh token
+    # Test connection with fresh token - but don't fail if connection test fails
+    is_connected = False
+    connection_error = None
+
     async with PortainerService(db) as service:
         try:
             fresh_token = await get_fresh_portainer_token(db, integration)
             is_connected = await service.test_connection(integration.url, fresh_token)
-        except:
+            if not is_connected:
+                logger.warning(f"Portainer connection test failed for {integration.url}")
+        except Exception as e:
+            logger.error(f"Portainer connection test error: {str(e)}")
+            connection_error = str(e)
+            # Don't fail - still return the integration data
+            # Connection may be temporarily down but we want to show saved config
             is_connected = False
 
+    # Always return the integration data, even if connection test fails
+    # This allows UI to show saved configuration and container mappings
     return {
         "connected": is_connected,
         "enabled": integration.enabled,
@@ -146,7 +160,8 @@ async def get_portainer_status(
         "endpoint_id": integration.endpoint_id,
         "container_mappings": integration.container_mappings or {},
         "containers_count": len(integration.cached_containers or []),
-        "updated_at": integration.updated_at.isoformat() if integration.updated_at else None
+        "updated_at": integration.updated_at.isoformat() if integration.updated_at else None,
+        "connection_error": connection_error  # Include error details for debugging
     }
 
 

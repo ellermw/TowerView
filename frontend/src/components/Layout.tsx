@@ -19,6 +19,8 @@ export default function Layout({ children }: LayoutProps) {
   const [showChangePassword, setShowChangePassword] = useState(false)
   const { hasPermission, isAdmin, isLocalUser, isMediaUser } = usePermissions()
   const [navigation, setNavigation] = useState<Array<{ name: string; href: string }>>([])
+  const [isNavbarVisible, setIsNavbarVisible] = useState(true)
+  const [lastScrollY, setLastScrollY] = useState(0)
 
   // Fetch site settings
   const { data: siteSettings } = useQuery(
@@ -29,6 +31,29 @@ export default function Layout({ children }: LayoutProps) {
       cacheTime: 10 * 60 * 1000,
     }
   )
+
+  // Handle scroll behavior - show navbar on scroll up, hide on scroll down
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY
+
+      if (currentScrollY < 10) {
+        // Always show navbar at top of page
+        setIsNavbarVisible(true)
+      } else if (currentScrollY < lastScrollY) {
+        // Scrolling up - show navbar
+        setIsNavbarVisible(true)
+      } else if (currentScrollY > lastScrollY && currentScrollY > 100) {
+        // Scrolling down and past 100px - hide navbar
+        setIsNavbarVisible(false)
+      }
+
+      setLastScrollY(currentScrollY)
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [lastScrollY])
 
   const siteName = siteSettings?.site_name || localStorage.getItem('siteName') || 'The Tower - View'
 
@@ -94,7 +119,9 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      <Disclosure as="nav" className="bg-white dark:bg-slate-800 shadow">
+      <Disclosure as="nav" className={`bg-white dark:bg-slate-800 shadow fixed top-0 left-0 right-0 z-50 transition-transform duration-300 ${
+        isNavbarVisible ? 'translate-y-0' : '-translate-y-full'
+      }`}>
         {({ open }) => (
           <>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -360,9 +387,12 @@ export default function Layout({ children }: LayoutProps) {
         )}
       </Disclosure>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {children}
-      </main>
+      {/* Add padding-top to account for fixed navbar */}
+      <div className="pt-16">
+        <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+          {children}
+        </main>
+      </div>
 
       <ChangePasswordModal
         isOpen={showChangePassword}

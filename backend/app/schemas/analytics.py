@@ -23,7 +23,7 @@ class TopMediaResponse(BaseModel):
     title: str
     media_type: str  # movie, episode, track
     provider_media_id: Optional[str] = None
-    server_name: Optional[str] = None
+    server_name: Optional[str] = None  # Comma-separated list of server names
     total_plays: int
     unique_users: int
     total_watch_time_minutes: int
@@ -31,6 +31,10 @@ class TopMediaResponse(BaseModel):
     grandparent_title: Optional[str] = None  # Show name
     parent_title: Optional[str] = None  # Season
     year: Optional[str] = None
+
+    class Config:
+        # Allow both server_name and server_names for compatibility
+        extra = "allow"
 
 
 class TopLibraryResponse(BaseModel):
@@ -75,7 +79,8 @@ class DashboardAnalyticsResponse(BaseModel):
     total_users: int
     total_watch_time_hours: int
     completion_rate: float  # overall completion rate
-    transcode_rate: float  # overall transcode rate
+    video_transcode_rate: float  # HW transcode rate (video transcoding)
+    audio_transcode_rate: float  # SW transcode rate (audio/other transcoding)
 
 
 class PlaybackEventCreate(BaseModel):

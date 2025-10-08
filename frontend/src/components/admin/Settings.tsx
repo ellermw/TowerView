@@ -315,8 +315,18 @@ export default function Settings() {
                 Connect to your Portainer instance to monitor Docker containers running your media servers.
               </p>
 
-              {portainerStatus?.connected ? (
+              {portainerStatus?.url ? (
                 <div className="space-y-4">
+                  {/* Show warning if configured but not connected */}
+                  {!portainerStatus.connected && (
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                      <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200 text-sm">
+                        <ExclamationTriangleIcon className="h-5 w-5" />
+                        <span>Connection test failed. Configuration is saved but unable to communicate with Portainer. Check logs for details.</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4">
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
@@ -434,8 +444,8 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Container Mappings */}
-          {portainerStatus?.connected && portainerContainers.length > 0 && (
+          {/* Container Mappings - Show if we have Portainer config, even if connection test failed */}
+          {portainerStatus?.url && (portainerContainers.length > 0 || Object.keys(portainerStatus.container_mappings || {}).length > 0) && (
             <div className="card">
               <div className="card-body">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">

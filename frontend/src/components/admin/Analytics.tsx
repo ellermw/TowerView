@@ -8,7 +8,8 @@ interface DashboardAnalytics {
   total_users: number
   total_watch_time_hours: number
   completion_rate: number
-  transcode_rate: number
+  video_transcode_rate: number
+  audio_transcode_rate: number
   top_users: Array<{
     username: string
     provider_user_id: string
@@ -18,21 +19,22 @@ interface DashboardAnalytics {
     completion_rate: number
   }>
   top_movies: Array<{
-    media_title: string
-    year: number
-    server_names: string
+    title: string
+    year: string
+    server_name: string
     total_plays: number
     unique_users: number
   }>
-  top_shows: Array<{
-    media_title: string
-    year: number
-    server_names: string
+  top_tv_shows: Array<{
+    title: string
+    year: string
+    server_name: string
     total_plays: number
     unique_users: number
   }>
   top_libraries: Array<{
-    library_section: string
+    library_name: string
+    server_name: string
     total_plays: number
     unique_users: number
   }>
@@ -59,7 +61,16 @@ export default function Analytics() {
   // Get analytics data
   const { data: analytics, isLoading } = useQuery<DashboardAnalytics>(
     ['analytics-page', filters],
-    () => api.post('/admin/analytics', filters).then(res => res.data),
+    () => api.post('/admin/analytics', filters).then(res => {
+      console.log('Analytics data received:', res.data)
+      console.log('Top movies count:', res.data.top_movies?.length)
+      console.log('First movie:', res.data.top_movies?.[0])
+      console.log('Top shows count:', res.data.top_tv_shows?.length)
+      console.log('First show:', res.data.top_tv_shows?.[0])
+      console.log('Top libraries count:', res.data.top_libraries?.length)
+      console.log('First library:', res.data.top_libraries?.[0])
+      return res.data
+    }),
     {
       staleTime: 30000, // Consider data fresh for 30 seconds
       cacheTime: 300000, // Keep in cache for 5 minutes
@@ -161,7 +172,7 @@ export default function Analytics() {
         {/* Summary Cards */}
         {!isLoading && analytics && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
               <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
                 <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">Total Sessions</div>
                 <div className="text-3xl font-bold text-slate-900 dark:text-white">
@@ -191,9 +202,18 @@ export default function Analytics() {
               </div>
 
               <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
-                <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">Transcode Rate</div>
+                <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">Video Transcode</div>
+                <div className="text-xs text-slate-500 dark:text-slate-500 mb-1">HW Transcoding</div>
                 <div className="text-3xl font-bold text-slate-900 dark:text-white">
-                  {(analytics.transcode_rate ?? 0).toFixed(1)}%
+                  {(analytics.video_transcode_rate ?? 0).toFixed(1)}%
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
+                <div className="text-sm text-slate-600 dark:text-slate-400 mb-1">Audio/Other Transcode</div>
+                <div className="text-xs text-slate-500 dark:text-slate-500 mb-1">SW Transcoding</div>
+                <div className="text-3xl font-bold text-slate-900 dark:text-white">
+                  {(analytics.audio_transcode_rate ?? 0).toFixed(1)}%
                 </div>
               </div>
             </div>
@@ -294,18 +314,18 @@ export default function Analytics() {
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                     {analytics.top_movies?.map((movie, index) => (
-                      <tr key={`${movie.media_title}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-700">
+                      <tr key={`${movie.title}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-700">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">
                           #{index + 1}
                         </td>
                         <td className="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">
-                          {movie.media_title}
+                          {movie.title}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">
                           {movie.year}
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                          {movie.server_names}
+                          {movie.server_name}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">
                           {movie.total_plays}
@@ -352,19 +372,19 @@ export default function Analytics() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                    {analytics.top_shows?.map((show, index) => (
-                      <tr key={`${show.media_title}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-700">
+                    {analytics.top_tv_shows?.map((show, index) => (
+                      <tr key={`${show.title}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-700">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">
                           #{index + 1}
                         </td>
                         <td className="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">
-                          {show.media_title}
+                          {show.title}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">
                           {show.year}
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                          {show.server_names}
+                          {show.server_name}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">
                           {show.total_plays}
@@ -394,7 +414,7 @@ export default function Analytics() {
                           <div className="text-lg font-bold text-slate-400">#{index + 1}</div>
                           <div>
                             <div className="font-medium text-slate-900 dark:text-white">
-                              {library.library_section}
+                              {library.library_name}
                             </div>
                             <div className="text-sm text-slate-600 dark:text-slate-400">
                               {library.unique_users} users

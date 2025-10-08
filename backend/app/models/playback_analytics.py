@@ -40,6 +40,7 @@ class PlaybackEvent(Base):
 
     # Streaming details
     video_decision = Column(String, nullable=True)  # directplay, copy, transcode
+    is_hw_transcode = Column(Boolean, default=False)  # True for HW transcode (video), False for SW transcode (audio/other)
     original_resolution = Column(String, nullable=True)
     original_bitrate = Column(String, nullable=True)
     video_codec = Column(String, nullable=True)

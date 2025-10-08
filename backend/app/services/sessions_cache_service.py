@@ -359,6 +359,17 @@ class SessionsCacheService:
 
             if not existing_event:
                 # Create new playback event
+                # Determine if this is hardware transcoding (video transcode) vs software transcode (audio/other)
+                is_hw = False
+                if session.get('video_decision') == 'transcode':
+                    # HW transcode if any of the HW transcode flags are True
+                    is_hw = (
+                        session.get('transcode_hw_requested') or
+                        session.get('transcode_hw_full_pipeline') or
+                        session.get('transcode_hw_decode') or
+                        session.get('transcode_hw_encode')
+                    ) or False
+
                 new_event = PlaybackEvent(
                     server_id=server_id,
                     provider_session_id=session.get('session_id'),
@@ -377,6 +388,7 @@ class SessionsCacheService:
                     platform=session.get('platform'),
                     product=session.get('product'),
                     video_decision=session.get('video_decision', 'unknown'),
+                    is_hw_transcode=is_hw,
                     original_resolution=session.get('original_resolution'),
                     original_bitrate=session.get('original_bitrate'),
                     video_codec=session.get('video_codec'),
