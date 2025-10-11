@@ -207,8 +207,8 @@ class SessionsCacheService:
                 logger.info(f"4K transcode check completed - terminated {terminated_count} sessions")
                 if terminated_count > 0:
                     logger.info(f"Auto-terminated {terminated_count} 4K transcode sessions")
-            except Exception as e:
-                logger.error(f"Error in auto-termination check: {e}", exc_info=True)
+            except Exception:
+                logger.exception("Error in auto-termination check")
 
             # Sync watch history from Plex servers (every 10th poll = every 20 seconds)
             if not hasattr(self, '_history_poll_counter'):
