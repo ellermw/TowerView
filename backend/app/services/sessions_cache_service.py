@@ -198,15 +198,17 @@ class SessionsCacheService:
                     self.last_error = None
 
             # Check for and terminate 4K transcodes if enabled
+            logger.info(f"About to check for 4K transcodes - {len(all_sessions)} sessions collected")
             try:
                 from ..services.transcode_termination_service import TranscodeTerminationService
                 terminated_count = await TranscodeTerminationService.check_and_terminate_4k_transcodes(
                     all_sessions, db
                 )
+                logger.info(f"4K transcode check completed - terminated {terminated_count} sessions")
                 if terminated_count > 0:
                     logger.info(f"Auto-terminated {terminated_count} 4K transcode sessions")
             except Exception as e:
-                logger.error(f"Error in auto-termination check: {e}")
+                logger.error(f"Error in auto-termination check: {e}", exc_info=True)
 
             # Sync watch history from Plex servers (every 10th poll = every 20 seconds)
             if not hasattr(self, '_history_poll_counter'):

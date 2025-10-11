@@ -226,19 +226,21 @@ class UsersCacheService:
             from sqlalchemy import text
             from datetime import datetime
 
-            # Build a query to get the most recent activity for each user
-            # Group by server_id and username to get last activity per user per server
+            # Optimized query - removed redundant DISTINCT ON with GROUP BY
+            # Uses CTE for better query planning and only fetches recent activity
             query = text("""
-                SELECT DISTINCT ON (server_id, username, provider_user_id)
-                    server_id,
-                    username,
-                    provider_user_id,
-                    MAX(started_at) as last_activity
-                FROM playback_events
-                WHERE username IS NOT NULL
-                   OR provider_user_id IS NOT NULL
-                GROUP BY server_id, username, provider_user_id
-                ORDER BY server_id, username, provider_user_id
+                WITH latest_activity AS (
+                    SELECT
+                        server_id,
+                        username,
+                        provider_user_id,
+                        MAX(started_at) as last_activity
+                    FROM playback_events
+                    WHERE (username IS NOT NULL OR provider_user_id IS NOT NULL)
+                      AND started_at > NOW() - INTERVAL '90 days'
+                    GROUP BY server_id, username, provider_user_id
+                )
+                SELECT * FROM latest_activity
             """)
 
             result = db.execute(query)

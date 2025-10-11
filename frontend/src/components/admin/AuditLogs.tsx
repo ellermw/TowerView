@@ -293,12 +293,12 @@ export default function AuditLogs() {
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                        {log.ip_address || 'Unknown'}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                        {log.ip_address || (log.actor_username === 'System' ? '-' : 'Unknown')}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                        <div className="max-w-xs truncate" title={log.user_agent || 'Unknown'}>
-                          {formatUserAgent(log.user_agent)}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                        <div className="max-w-xs truncate" title={log.user_agent || (log.actor_username === 'System' ? '-' : 'Unknown')}>
+                          {log.user_agent ? formatUserAgent(log.user_agent) : (log.actor_username === 'System' ? '-' : 'Unknown')}
                         </div>
                       </td>
                     </tr>

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TowerView is a unified media server management platform that provides a single administrative interface for managing multiple media servers (Plex, Jellyfin, Emby). It includes real-time monitoring, user management, session control, analytics, and Docker container management via Portainer integration.
 
-**Current Version:** 2.3.18
+**Current Version:** 2.3.19
 
 ## Architecture
 
@@ -503,6 +503,45 @@ docker exec -i towerview-db-1 psql -U towerview towerview < backup.sql
 
 This prevents the recurring "incorrect credentials" issue after Docker updates.
 
+## Performance Optimizations
+
+**Version 2.3.19+**: Major performance improvements implemented:
+
+### Database Indexes
+Added comprehensive indexes for high-frequency queries (`backend/add_indexes.sql`):
+- `idx_playback_events_server_username_date` - Optimizes user activity lookups
+- `idx_playback_events_server_provider_date` - Optimizes provider user queries
+- `idx_playback_events_started_at` - General date-based filtering
+- `idx_playback_events_library_section` - Library analytics optimization
+- `idx_playback_events_server_date_type` - Composite index for common analytics filters
+
+**Impact**: Significantly faster analytics queries as playback_events table grows beyond 1000+ records.
+
+### Query Optimizations
+
+**Users Cache Service** (`users_cache_service.py:223-244`):
+- Fixed N+1 query using Common Table Expression (CTE)
+- Added 90-day filter to limit dataset size
+- Removed redundant `DISTINCT ON` with `GROUP BY`
+- **Before**: Scanned entire playback_events table every 60 seconds
+- **After**: Efficient indexed query with date filtering
+
+**Transcode Termination** (`transcode_termination_service.py:125-140`):
+- Fixed race condition by determining termination decision inside lock
+- Added TTL-based cleanup (1-hour expiry) to prevent memory leak
+- Session tracking dictionary now automatically removes old entries
+- **Before**: Potential race condition between check and termination, unbounded memory growth
+- **After**: Thread-safe decision making, automatic memory cleanup
+
+### Best Practices
+
+When adding new features:
+- **Always add indexes** for columns used in `WHERE`, `GROUP BY`, or `ORDER BY` clauses
+- **Use CTEs** for complex queries instead of subqueries for better query planning
+- **Add date filters** to limit dataset size when querying large historical tables
+- **Implement TTL cleanup** for in-memory caches to prevent memory leaks
+- **Profile queries** using PostgreSQL's `EXPLAIN ANALYZE` before deploying
+
 ## Troubleshooting Common Issues
 
 ### Sessions Not Loading
@@ -627,3 +666,29 @@ New dedicated Analytics page in v2.3.11+ (enhanced in v2.3.17):
   - `staleTime: 30000` - Consider data fresh for 30 seconds
   - `cacheTime: 300000` - Keep in cache for 5 minutes
   - Query key includes filters for proper cache invalidation
+
+### Library Detection and Normalization
+
+**Version 2.3.19+**: Enhanced library detection for Emby and Jellyfin:
+
+**Library Name Fetching** (Emby/Jellyfin):
+- **Issue**: Emby and Jellyfin Sessions API don't include library names in `NowPlayingItem`
+- **Solution**: Additional API calls fetch full item details and traverse parent hierarchy
+- **Implementation**:
+  - `jellyfin.py:133-178` - Fetches item details via `/Users/{userId}/Items/{itemId}`
+  - `emby.py:138-183` - Same implementation for Emby
+  - Walks up parent chain until finding item with `CollectionType` (indicates library root)
+  - Handles both movies (1 level) and TV episodes (2-3 levels: Episode → Season → Series → Library)
+
+**Library Name Normalization** (`analytics_service.py:87-98`):
+- **Purpose**: Combine library name variants (e.g., "4K Movies - DolbyVision" vs "4K Movies - Dolby Vision")
+- **Implementation**: `normalize_library_name()` method
+  - Replaces "DolbyVision" (no space) with "Dolby Vision" (with space)
+  - Applied during analytics aggregation in `get_top_libraries()`
+  - Combines statistics from both variants under single normalized name
+- **Result**: Analytics show combined data for libraries with inconsistent naming
+
+**Notes**:
+- Normalization doesn't modify database records, only affects analytics aggregation
+- Similar to `normalize_client_name()` and `normalize_device_name()` patterns
+- Analytics service filters out "Unknown Library" entries automatically

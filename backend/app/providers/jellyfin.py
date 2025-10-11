@@ -130,6 +130,53 @@ class JellyfinProvider(BaseProvider):
 
                     logger.debug(f"Processing session with media: {item.get('Name')} of type {item.get('Type')}")
 
+                    # Fetch library name from full item details
+                    # NowPlayingItem doesn't include library name, so we need to fetch it
+                    library_name = "Unknown Library"
+                    try:
+                        item_id = item.get("Id")
+                        user_id = session.get("UserId")
+                        if item_id and user_id:
+                            item_response = await client.get(
+                                f"{base_url}/Users/{user_id}/Items/{item_id}",
+                                headers={"Authorization": f"MediaBrowser Token={self.admin_token or self.api_key}"},
+                                timeout=5.0
+                            )
+                            if item_response.status_code == 200:
+                                full_item = item_response.json()
+                                # ParentId points to the library folder
+                                parent_id = full_item.get("ParentId")
+
+                                # For episodes, we need to go up the hierarchy to find the library
+                                # Try to get the library from the item's path or fetch parent
+                                if parent_id:
+                                    parent_response = await client.get(
+                                        f"{base_url}/Users/{user_id}/Items/{parent_id}",
+                                        headers={"Authorization": f"MediaBrowser Token={self.admin_token or self.api_key}"},
+                                        timeout=5.0
+                                    )
+                                    if parent_response.status_code == 200:
+                                        parent_item = parent_response.json()
+                                        # Keep going up until we find CollectionType (which indicates library)
+                                        if parent_item.get("CollectionType"):
+                                            library_name = parent_item.get("Name", "Unknown Library")
+                                        elif parent_item.get("ParentId"):
+                                            # Try one more level up for episodes (Series -> Library)
+                                            grandparent_id = parent_item.get("ParentId")
+                                            grandparent_response = await client.get(
+                                                f"{base_url}/Users/{user_id}/Items/{grandparent_id}",
+                                                headers={"Authorization": f"MediaBrowser Token={self.admin_token or self.api_key}"},
+                                                timeout=5.0
+                                            )
+                                            if grandparent_response.status_code == 200:
+                                                grandparent_item = grandparent_response.json()
+                                                if grandparent_item.get("CollectionType"):
+                                                    library_name = grandparent_item.get("Name", "Unknown Library")
+
+                                logger.debug(f"Jellyfin library name for {item.get('Name')}: {library_name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch library name for item {item.get('Id')}: {e}")
+
                     # Get media info with fallbacks
                     media_title = item.get("Name") or item.get("OriginalTitle") or "Unknown Media"
                     media_type = item.get("Type", "unknown").lower()  # Jellyfin uses "Movie", "Episode", etc.
@@ -290,7 +337,7 @@ class JellyfinProvider(BaseProvider):
                         "summary": item.get("Overview"),
                         "content_rating": item.get("OfficialRating"),
                         "runtime": item.get("RunTimeTicks", 0) // 10000000 if item.get("RunTimeTicks") else 0,
-                        "library_section": item.get("LibraryName", "Unknown Library"),
+                        "library_section": library_name,
 
                         # Streaming details
                         "video_decision": "transcode" if is_transcoding else play_method,

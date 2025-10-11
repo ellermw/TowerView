@@ -56,6 +56,24 @@ class ConnectionManager:
             for conn in disconnected:
                 self.active_connections[client_id].discard(conn)
 
+    async def broadcast_notification(self, data: dict):
+        """Broadcast a notification to all connected admin clients"""
+        logger.info(f"Broadcasting notification to all clients: {data.get('type')}")
+        disconnected = []
+
+        for client_id, connections in self.active_connections.items():
+            for connection in connections:
+                try:
+                    await connection.send_json(data)
+                except Exception as e:
+                    logger.error(f"Error broadcasting to client {client_id}: {e}")
+                    disconnected.append((client_id, connection))
+
+        # Remove disconnected clients
+        for client_id, conn in disconnected:
+            if client_id in self.active_connections:
+                self.active_connections[client_id].discard(conn)
+
 manager = ConnectionManager()
 
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuthStore } from '../store/authStore'
+import toast from 'react-hot-toast'
 
 interface MetricsData {
   server_id: number
@@ -21,12 +22,14 @@ interface UseWebSocketMetricsOptions {
   serverIds: number[]
   enabled?: boolean
   onError?: (error: Error) => void
+  showNotifications?: boolean
 }
 
 export function useWebSocketMetrics({
   serverIds,
   enabled = true,
-  onError
+  onError,
+  showNotifications = true
 }: UseWebSocketMetricsOptions) {
   const [metrics, setMetrics] = useState<Record<number, MetricsData>>({})
   const [isConnected, setIsConnected] = useState(false)
@@ -94,6 +97,25 @@ export function useWebSocketMetrics({
               }
             })
             setMetrics(newMetrics)
+          } else if (message.type === 'notification' && showNotifications) {
+            // Handle 4K transcode notifications
+            const { notification_type, details } = message
+
+            if (notification_type === '4k_transcode_detected') {
+              toast(`⚠️ 4K Transcode Detected\n${details?.username} watching ${details?.title}`,
+                { duration: 5000, position: 'top-right', style: { background: '#FEF3C7', color: '#92400E' } }
+              )
+            } else if (notification_type === '4k_transcode_terminated') {
+              toast.success(
+                `✅ 4K Transcode Terminated\n${details?.username} - ${details?.title}`,
+                { duration: 4000, position: 'top-right' }
+              )
+            } else if (notification_type === '4k_transcode_termination_failed') {
+              toast.error(
+                `❌ Termination Failed\n${details?.username} - ${details?.title}`,
+                { duration: 6000, position: 'top-right' }
+              )
+            }
           }
         } catch (_error) {
           // Error parsing message - silenced in production

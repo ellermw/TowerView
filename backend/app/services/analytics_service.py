@@ -84,6 +84,20 @@ class AnalyticsService:
         return device.strip()
 
     @staticmethod
+    def normalize_library_name(library: str) -> str:
+        """Normalize library names to combine similar variants"""
+        if not library:
+            return "Unknown Library"
+
+        library_normalized = library.strip()
+
+        # Normalize Dolby Vision spacing variants
+        # Replace "DolbyVision" (no space) with "Dolby Vision" (with space)
+        library_normalized = library_normalized.replace("DolbyVision", "Dolby Vision")
+
+        return library_normalized
+
+    @staticmethod
     def normalize_client_name(product: str) -> str:
         """Normalize client/product names to combine similar variants"""
         if not product:
@@ -342,41 +356,60 @@ class AnalyticsService:
         return results
 
     def get_top_libraries(self, filters: AnalyticsFilters, limit: int = 5, allowed_server_ids: Optional[List[int]] = None) -> List[TopLibraryResponse]:
-        """Get most used libraries - combines libraries with the same name across servers"""
+        """Get most used libraries - combines libraries with the same name across servers and normalizes names"""
+        # Get all playback data with library information
         query = self.db.query(
             PlaybackEvent.library_section,
-            func.string_agg(func.distinct(Server.name), ', ').label('server_names'),
-            func.count(PlaybackEvent.id).label('total_plays'),
-            func.count(func.distinct(PlaybackEvent.username)).label('unique_users'),
-            func.sum(
-                case(
-                    (PlaybackEvent.progress_ms > 0, PlaybackEvent.progress_ms),
-                    else_=0
-                ) / 60000
-            ).label('total_watch_time_minutes'),
-            func.array_agg(func.distinct(PlaybackEvent.media_type)).label('media_types')
+            PlaybackEvent.username,
+            PlaybackEvent.progress_ms,
+            PlaybackEvent.media_type,
+            Server.name.label('server_name')
         ).join(Server, PlaybackEvent.server_id == Server.id)\
          .filter(and_(
              self.get_date_filter(filters),
              self.get_server_filter(filters, allowed_server_ids),
              PlaybackEvent.library_section.isnot(None),
              PlaybackEvent.library_section != 'Unknown Library'  # Exclude Unknown Library
-         ))\
-         .group_by(PlaybackEvent.library_section)\
-         .order_by(desc('total_plays'))\
-         .limit(limit)
+         ))
 
-        results = []
+        # Aggregate by normalized library name
+        library_stats = defaultdict(lambda: {
+            'total_plays': 0,
+            'unique_users': set(),
+            'total_watch_time_ms': 0,
+            'media_types': set(),
+            'servers': set()
+        })
+
         for row in query:
+            normalized_library = self.normalize_library_name(row.library_section)
+            stats = library_stats[normalized_library]
+
+            stats['total_plays'] += 1
+            if row.username:
+                stats['unique_users'].add(row.username)
+            if row.progress_ms and row.progress_ms > 0:
+                stats['total_watch_time_ms'] += row.progress_ms
+            if row.media_type:
+                stats['media_types'].add(row.media_type)
+            if row.server_name:
+                stats['servers'].add(row.server_name)
+
+        # Convert to TopLibraryResponse objects
+        results = []
+        for library_name, stats in library_stats.items():
             results.append(TopLibraryResponse(
-                library_name=row.library_section,
-                server_name=row.server_names,  # Now shows all servers with this library
-                total_plays=row.total_plays,
-                unique_users=row.unique_users,
-                total_watch_time_minutes=int(row.total_watch_time_minutes or 0),
-                media_types=[t for t in (row.media_types or []) if t]
+                library_name=library_name,
+                server_name=', '.join(sorted(stats['servers'])),  # Comma-separated server names
+                total_plays=stats['total_plays'],
+                unique_users=len(stats['unique_users']),
+                total_watch_time_minutes=int(stats['total_watch_time_ms'] / 60000),
+                media_types=list(stats['media_types'])
             ))
-        return results
+
+        # Sort by total_plays descending and limit
+        results.sort(key=lambda x: x.total_plays, reverse=True)
+        return results[:limit]
 
     def get_top_clients(self, filters: AnalyticsFilters, limit: int = 5, allowed_server_ids: Optional[List[int]] = None) -> List[TopClientResponse]:
         """Get most used clients (products) with normalized names"""

@@ -1,6 +1,6 @@
 # TowerView - Unified Media Server Management Platform
 
-## Version 2.3.18 - UI & Analytics Improvements
+## Version 2.3.19 - Performance & Library Detection Improvements
 
 TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
 
@@ -401,7 +401,40 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.18 (Current)
+### Version 2.3.19 (Current)
+
+- **Library Detection for Emby & Jellyfin**:
+  - Fixed missing library names in analytics for Emby and Jellyfin servers
+  - Implemented additional API calls to fetch library information from item hierarchy
+  - Both providers now traverse parent chain to identify library root (CollectionType)
+  - Handles movies (1 level) and TV episodes (2-3 levels) correctly
+  - Libraries now properly display in "Top Libraries" analytics
+
+- **Library Name Normalization**:
+  - Added `normalize_library_name()` to combine naming variants
+  - Automatically merges "DolbyVision" and "Dolby Vision" (spacing variants)
+  - Applied during analytics aggregation for consistent reporting
+  - Works for all library naming inconsistencies
+  - Follows same pattern as client/device normalization
+
+- **Critical Performance Optimizations**:
+  - **Database Indexes**: Added 5 comprehensive indexes for playback_events table
+    - Optimizes user activity lookups, analytics queries, and date filtering
+    - Significantly faster queries as table grows beyond 1000+ records
+  - **Users Cache Query**: Fixed N+1 query using CTE with 90-day filter
+    - Removed redundant DISTINCT ON with GROUP BY
+    - Reduced query time from full table scan to efficient indexed lookup
+  - **Transcode Service**: Fixed race condition with lock-based decision making
+    - Thread-safe termination logic prevents concurrent modification
+    - Added TTL-based cleanup (1-hour expiry) to prevent memory leak
+    - Session tracking dictionary now auto-removes old entries
+
+- **Code Quality Improvements**:
+  - Enhanced error logging with proper exception tracking
+  - Improved async/await patterns for better performance
+  - Better separation of lock acquisition and termination execution
+
+### Version 2.3.18
 
 - **Transcode Analytics Enhancement**:
   - Split transcode tracking into **Video Transcode** (HW transcoding) and **Audio/Other Transcode** (SW transcoding)

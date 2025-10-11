@@ -25,12 +25,17 @@ class TranscodeTerminationService:
     # Default message
     DEFAULT_MESSAGE = "4K transcoding is not allowed. Please use a client that supports direct play or choose a lower quality version."
 
-    # Track session start times and terminated sessions
+    # Track session start times
     _session_start_times: ClassVar[Dict[str, datetime]] = {}  # Track when we first saw a 4K transcode
-    _terminated_sessions: ClassVar[Dict[str, datetime]] = {}  # Track terminated sessions to avoid duplicates
-    _lock: ClassVar[asyncio.Lock] = asyncio.Lock()  # Protect shared class variables from race conditions
+    _lock: ClassVar[Optional[asyncio.Lock]] = None  # Protect shared class variables from race conditions
     GRACE_PERIOD = timedelta(seconds=5)  # Allow 5 seconds before termination
-    TERMINATION_COOLDOWN = timedelta(minutes=5)  # Don't re-terminate same user/title for 5 minutes
+
+    @classmethod
+    def _get_lock(cls) -> asyncio.Lock:
+        """Get or create the asyncio lock (must be created within event loop)"""
+        if cls._lock is None:
+            cls._lock = asyncio.Lock()
+        return cls._lock
 
     @classmethod
     def get_settings(cls, db: Session) -> Dict[str, Any]:
@@ -107,65 +112,110 @@ class TranscodeTerminationService:
         """
         settings = cls.get_settings(db)
 
+        logger.info(f"4K Transcode Check: Feature enabled={settings['enabled']}, Enabled servers={settings['server_ids']}, Total sessions={len(sessions)}")
+
         # Skip if feature is disabled
         if not settings["enabled"]:
+            logger.info("4K transcode auto-termination is disabled, skipping check")
             return 0
 
         terminated_count = 0
         now = datetime.utcnow()
 
-        # Clean up old records with lock protection
-        async with cls._lock:
-            cls._terminated_sessions = {
-                k: v for k, v in cls._terminated_sessions.items()
-                if now - v < cls.TERMINATION_COOLDOWN
-            }
-
-            # Clean up old session start times (remove sessions that are no longer active)
+        # Clean up old session start times (remove sessions that are no longer active)
+        # Also remove entries older than 1 hour to prevent memory leak
+        async with cls._get_lock():
             active_session_keys = {
                 f"{s.get('server_id')}_{s.get('session_id')}"
                 for s in sessions
                 if s.get('server_id') and s.get('session_id')
             }
+            # Remove both inactive and very old sessions
+            cutoff_time = now - timedelta(hours=1)
             cls._session_start_times = {
                 k: v for k, v in cls._session_start_times.items()
-                if k in active_session_keys
+                if k in active_session_keys and v > cutoff_time
             }
+            if len(cls._session_start_times) > 0:
+                logger.debug(f"Cleaned up session tracking, {len(cls._session_start_times)} sessions still tracked")
 
         for session in sessions:
             # Skip if server is not in the enabled list
             server_id = session.get("server_id")
+            session_id = session.get("session_id")
+            username = session.get("username", "Unknown")
+            title = session.get("title", "Unknown")
+
+            logger.info(f"Checking session: server_id={server_id}, session_id={session_id}, user={username}, title={title}")
+
             if server_id not in settings["server_ids"]:
+                logger.info(f"  ➜ SKIP: Server {server_id} not in enabled list {settings['server_ids']}")
                 continue
 
             # Check if this is a 4K to 1080p or below transcode
-            if not cls._is_4k_downscale_transcode(session):
+            is_4k_transcode = cls._is_4k_downscale_transcode(session)
+            logger.info(f"  ➜ Is 4K transcode: {is_4k_transcode} (video_decision={session.get('video_decision')}, original_res={session.get('original_resolution')}, stream_res={session.get('stream_resolution')}, is_4k={session.get('is_4k')})")
+
+            if not is_4k_transcode:
                 continue
+
+            logger.info(f"  ➜ 4K TRANSCODE DETECTED! Processing termination logic for {title}")
+
+            # Send notification about 4K transcode detection
+            await cls._send_notification(
+                "4k_transcode_detected",
+                f"4K transcode detected: {username} watching {title}",
+                {
+                    "username": username,
+                    "title": title,
+                    "server_id": server_id,
+                    "original_resolution": session.get('original_resolution'),
+                    "stream_resolution": session.get('stream_resolution')
+                }
+            )
 
             # Create session tracking key (server_id + session_id) for per-session grace period tracking
             session_track_key = f"{server_id}_{session.get('session_id')}"
+            logger.info(f"  ➜ Session tracking key: {session_track_key}")
 
             # Check session state and decide on termination with lock protection
-            async with cls._lock:
-                # Track when we first saw this 4K transcode
-                if session_track_key not in cls._session_start_times:
-                    cls._session_start_times[session_track_key] = now
-                    logger.debug(f"Started tracking 4K transcode session {session_track_key}")
-                    continue  # Don't terminate yet, start grace period
+            # Determine termination decision inside lock, execute outside
+            should_terminate = False
+            try:
+                logger.info(f"  ➜ Acquiring lock to check session state...")
+                lock = cls._get_lock()
+                logger.info(f"  ➜ Got lock object: {lock}")
+                async with lock:
+                    logger.info(f"  ➜ Inside lock context! Tracked sessions: {list(cls._session_start_times.keys())}")
 
-                # Check if grace period has passed
-                session_start = cls._session_start_times[session_track_key]
-                if now - session_start < cls.GRACE_PERIOD:
-                    remaining = (cls.GRACE_PERIOD - (now - session_start)).total_seconds()
-                    logger.debug(f"Session {session_track_key} in grace period, {remaining:.1f}s remaining")
-                    continue
+                    # Track when we first saw this 4K transcode
+                    if session_track_key not in cls._session_start_times:
+                        logger.info(f"  ➜ NEW 4K transcode! Starting grace period for {session_track_key}")
+                        cls._session_start_times[session_track_key] = now
+                        logger.info(f"  ➜ Started tracking 4K transcode session {session_track_key} - grace period starts now")
+                        should_terminate = False
+                    else:
+                        # Check if grace period has passed
+                        logger.info(f"  ➜ Session {session_track_key} already being tracked")
+                        session_start = cls._session_start_times[session_track_key]
+                        elapsed = now - session_start
+                        logger.info(f"  ➜ Time elapsed: {elapsed.total_seconds():.1f}s, Grace period: {cls.GRACE_PERIOD.total_seconds()}s")
+                        if now - session_start < cls.GRACE_PERIOD:
+                            remaining = (cls.GRACE_PERIOD - (now - session_start)).total_seconds()
+                            logger.info(f"  ➜ Session {session_track_key} in grace period, {remaining:.1f}s remaining")
+                            should_terminate = False
+                        else:
+                            logger.info(f"  ➜ Grace period EXPIRED! Proceeding to terminate...")
+                            should_terminate = True
+            except Exception as lock_error:
+                logger.error(f"  ➜ ERROR acquiring/using lock: {lock_error}", exc_info=True)
+                continue
 
-                # Check if we recently terminated this session (server_id + username + title) for cooldown across all sessions of same content
-                username = session.get("username", "")
-                session_key = f"{server_id}_{username}_{session.get('title')}"
-                if session_key in cls._terminated_sessions:
-                    logger.debug(f"Recently terminated session for {username}, skipping")
-                    continue
+            # Skip termination if not ready (grace period or new session)
+            if not should_terminate:
+                continue
+
+            username = session.get("username", "")
 
             # Get the server
             server = db.query(Server).filter_by(id=session["server_id"]).first()
@@ -175,30 +225,27 @@ class TranscodeTerminationService:
 
             try:
                 # Create provider and terminate session
-                provider = ProviderFactory.create_provider(
-                    provider_type=server.type,
-                    server_url=server.url,
-                    api_token=server.get_decrypted_token(),
-                    username=server.get_decrypted_username(),
-                    password=server.get_decrypted_password(),
-                    server_id=server.id
-                )
+                provider = ProviderFactory.create_provider(server, db)
 
-                # Only send message for Plex servers
-                termination_message = settings["message"] if server.type == "plex" else None
-
-                success = await provider.terminate_session(
-                    session_id=session["session_id"],
-                    message=termination_message
-                )
+                # Only send message for Plex servers (Emby/Jellyfin don't support message parameter)
+                if server.type.value == "plex":
+                    termination_message = settings["message"]
+                    logger.info(f"  ➜ Server type: plex, Message: {termination_message}")
+                    success = await provider.terminate_session(
+                        provider_session_id=session["session_id"],
+                        message=termination_message
+                    )
+                else:
+                    logger.info(f"  ➜ Server type: {server.type.value}, Message: None (non-Plex)")
+                    success = await provider.terminate_session(
+                        provider_session_id=session["session_id"]
+                    )
 
                 if success:
                     terminated_count += 1
 
-                    # Update shared state with lock protection
-                    async with cls._lock:
-                        cls._terminated_sessions[session_key] = now
-                        # Remove from tracking
+                    # Remove from tracking
+                    async with cls._get_lock():
                         if session_track_key in cls._session_start_times:
                             del cls._session_start_times[session_track_key]
 
@@ -211,7 +258,7 @@ class TranscodeTerminationService:
                         target="session",
                         target_name=f"{username} - {session.get('title')}",
                         details={
-                            "reason": "4K transcode auto-termination (5-second grace period exceeded)",
+                            "reason": "4K transcode auto-termination",
                             "server_id": server.id,
                             "server_name": server.name,
                             "server_type": str(server.type.value),
@@ -219,21 +266,58 @@ class TranscodeTerminationService:
                             "title": session.get("title"),
                             "original_resolution": session.get("original_resolution"),
                             "stream_resolution": session.get("stream_resolution"),
-                            "grace_period_seconds": cls.GRACE_PERIOD.total_seconds(),
                             "message_sent": termination_message if termination_message else "No message (non-Plex server)"
                         },
                         request=None
                     )
 
                     logger.info(f"Terminated 4K transcode for user {username} on {server.name}: {session.get('title')}")
+
+                    # Send success notification
+                    await cls._send_notification(
+                        "4k_transcode_terminated",
+                        f"Successfully terminated 4K transcode: {username} - {title}",
+                        {
+                            "username": username,
+                            "title": title,
+                            "server_name": server.name,
+                            "server_id": server.id
+                        }
+                    )
                 else:
                     logger.warning(f"Failed to terminate 4K transcode for {username} on {server.name}")
+
+                    # Send failure notification
+                    await cls._send_notification(
+                        "4k_transcode_termination_failed",
+                        f"Failed to terminate 4K transcode: {username} - {title}",
+                        {
+                            "username": username,
+                            "title": title,
+                            "server_name": server.name,
+                            "server_id": server.id
+                        }
+                    )
 
             except Exception as e:
                 logger.error(f"Error terminating session: {str(e)}")
                 continue
 
         return terminated_count
+
+    @classmethod
+    async def _send_notification(cls, notification_type: str, message: str, details: Dict[str, Any]):
+        """Send a WebSocket notification to all connected clients"""
+        try:
+            from ..api.routes.websocket import manager
+            await manager.broadcast_notification({
+                "type": "notification",
+                "notification_type": notification_type,
+                "message": message,
+                "details": details
+            })
+        except Exception as e:
+            logger.error(f"Error sending notification: {e}")
 
     @staticmethod
     def _is_4k_downscale_transcode(session: Dict[str, Any]) -> bool:
