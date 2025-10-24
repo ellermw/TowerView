@@ -64,93 +64,76 @@ class MetricsCacheService:
         """Collect metrics from all configured servers"""
         from ..core.database import SessionLocal
         from ..models.server import Server
-        from ..models.settings import PortainerIntegration
-        from ..services.portainer_service import PortainerService
+        from ..models.settings import ProxmoxIntegration
+        from ..services.proxmox_service import ProxmoxService
 
         db = SessionLocal()
         try:
             # Get all active servers
             servers = db.query(Server).filter(Server.enabled == True).all()
 
-            # Get Portainer integration settings
-            portainer_integration = db.query(PortainerIntegration).filter(
-                PortainerIntegration.enabled == True
+            # Get Proxmox integration settings
+            proxmox_integration = db.query(ProxmoxIntegration).filter(
+                ProxmoxIntegration.enabled == True
             ).first()
 
-            if not portainer_integration:
-                logger.debug("No Portainer integration configured")
+            if not proxmox_integration:
+                logger.debug("No Proxmox integration configured")
                 return
 
-            url = portainer_integration.url
-            endpoint_id = portainer_integration.endpoint_id or 2
+            host = proxmox_integration.host
+            api_token = proxmox_integration.api_token
+            verify_ssl = proxmox_integration.verify_ssl or False
 
-            if not url:
-                logger.debug("No Portainer URL configured")
+            if not host or not api_token:
+                logger.debug("Proxmox host or API token not configured")
                 return
 
             # Collect metrics for each server
             new_metrics = {}
 
             # Get container mappings
-            container_mappings = portainer_integration.container_mappings or {}
+            container_mappings = proxmox_integration.container_mappings or {}
 
-            async with PortainerService(db) as portainer:
-                # Get a fresh token (will auto-refresh if expired)
-                api_token = await portainer._get_fresh_token(portainer_integration)
-                if not api_token:
-                    logger.debug("Failed to get Portainer API token")
-                    return
-                # Get all containers to resolve short IDs to full IDs
-                all_containers = await portainer.get_containers(url, api_token, endpoint_id)
-                container_id_map = {}
-                if all_containers:
-                    for container in all_containers:
-                        # Map short ID (12 chars) to full ID
-                        short_id = container.get('id', '')[:12]
-                        full_id = container.get('id', '')
-                        if short_id and full_id:
-                            container_id_map[short_id] = full_id
-
+            async with ProxmoxService(db) as proxmox:
                 for server in servers:
                     try:
                         # Check if this server has a container mapping
                         mapping = container_mappings.get(str(server.id))
                         if not mapping:
-                            logger.debug(f"No container mapped for server {server.id}")
+                            logger.debug(f"No LXC container mapped for server {server.id}")
                             continue
 
-                        # Extract container ID from mapping (handle both dict and string formats)
+                        # Extract node and VMID from mapping
                         if isinstance(mapping, dict):
-                            container_id = mapping.get('container_id')
+                            node = mapping.get('node')
+                            vmid = mapping.get('vmid')
                         else:
-                            container_id = mapping
-
-                        if not container_id:
-                            logger.debug(f"No container ID in mapping for server {server.id}")
+                            # Fallback: if mapping is not a dict, skip
+                            logger.warning(f"Invalid mapping format for server {server.id}")
                             continue
 
-                        # Resolve to full ID if we have a short ID
-                        if len(container_id) <= 12:
-                            full_container_id = container_id_map.get(container_id, container_id)
-                        else:
-                            full_container_id = container_id
+                        if not node or not vmid:
+                            logger.debug(f"No node/vmid in mapping for server {server.id}")
+                            continue
 
-                        # Get container stats
-                        stats = await portainer.get_container_stats(url, api_token, full_container_id, endpoint_id)
+                        # Get container stats from Proxmox
+                        stats = await proxmox.get_container_stats(host, node, vmid, api_token, verify_ssl)
 
                         if stats:
-                            # Stats are already processed by PortainerService
+                            # Stats are already processed by ProxmoxService
                             metrics = {
                                 "cpu_usage": stats.get("cpu_percent", 0),
                                 "memory_usage": stats.get("memory_percent", 0),
-                                "memory_used_gb": stats.get("memory_usage_mb", 0) / 1024,
-                                "memory_total_gb": stats.get("memory_limit_mb", 0) / 1024,
-                                "container": container_id,
-                                "gpu": {"available": False},
+                                "memory_used_gb": stats.get("memory_used_gb", 0),
+                                "memory_total_gb": stats.get("memory_total_gb", 0),
+                                "container": f"{node}:{vmid}",
+                                "status": stats.get("status", "unknown"),
+                                "gpu": {"available": False},  # LXC doesn't have GPU stats
                                 "timestamp": stats.get("timestamp")
                             }
                             new_metrics[server.id] = metrics
-                            logger.debug(f"Collected metrics for server {server.id}: CPU={metrics['cpu_usage']:.1f}%, Memory={metrics['memory_usage']:.1f}%")
+                            logger.debug(f"Collected metrics for server {server.id} (LXC {node}:{vmid}): CPU={metrics['cpu_usage']:.1f}%, Memory={metrics['memory_usage']:.1f}%")
 
                     except Exception as e:
                         logger.error(f"Error collecting metrics for server {server.id}: {e}")

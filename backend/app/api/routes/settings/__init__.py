@@ -10,6 +10,7 @@ router = APIRouter()
 # Import sub-routers
 from .netdata import router as netdata_router
 from .portainer import router as portainer_router
+from .proxmox import router as proxmox_router
 from .sync import router as sync_router
 from .site import router as site_router
 from .transcode import router as transcode_router
@@ -17,6 +18,7 @@ from .transcode import router as transcode_router
 # Include all sub-routers
 router.include_router(netdata_router, tags=["netdata"])
 router.include_router(portainer_router, tags=["portainer"])
+router.include_router(proxmox_router, tags=["proxmox"])
 router.include_router(sync_router, tags=["sync"])
 router.include_router(site_router, tags=["site"])
 router.include_router(transcode_router, tags=["transcode"])

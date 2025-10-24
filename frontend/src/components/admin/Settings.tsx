@@ -270,15 +270,15 @@ export default function Settings() {
           <span>General</span>
         </button>
         <button
-          onClick={() => setActiveTab('portainer')}
+          onClick={() => setActiveTab('proxmox')}
           className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-            activeTab === 'portainer'
+            activeTab === 'proxmox'
               ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           <CubeIcon className="h-5 w-5" />
-          <span>Portainer</span>
+          <span>Proxmox</span>
         </button>
         <button
           onClick={() => setActiveTab('sync')}
@@ -293,8 +293,8 @@ export default function Settings() {
         </button>
       </div>
 
-      {/* Portainer Tab Content */}
-      {activeTab === 'portainer' && (
+      {/* Proxmox Tab Content */}
+      {activeTab === 'proxmox' && (
         <div className="space-y-6">
           {/* Portainer Connection */}
           <div className="card">

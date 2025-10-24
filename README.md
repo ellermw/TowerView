@@ -1,8 +1,8 @@
 # TowerView - Unified Media Server Management Platform
 
-## Version 2.3.19 - Performance & Library Detection Improvements
+## Version 2.3.20 - Proxmox VE Integration
 
-TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with a streamlined 2-container deployment option for production use.
+TowerView is a comprehensive administrative tool for managing multiple media servers (Plex, Jellyfin, Emby) from a single interface. It provides real-time monitoring, user management, session control, and detailed analytics for administrators and support staff. Now with native Proxmox VE integration for LXC container monitoring.
 
 ## 🎯 Features
 
@@ -14,7 +14,7 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 - **User Management**: Comprehensive user administration across all connected servers
 - **Watch History**: Click any username to view their complete viewing history (up to 365 days)
 - **Audit Logging**: Complete audit trail of all administrative actions with filtering and search
-- **Container Management**: Docker container control via Portainer integration with auto-refresh tokens
+- **Container Monitoring**: LXC container monitoring via Proxmox VE integration with real-time metrics
 
 ### Navigation Structure
 
@@ -66,7 +66,7 @@ TowerView is a comprehensive administrative tool for managing multiple media ser
 - **4K Transcode Auto-Termination**: Automatically terminate 4K to 1080p/lower transcodes with configurable grace period
 - **Active session tracking** with detailed user information
 - **Network throughput visualization** with upload/download metrics
-- **Container health monitoring** via Portainer integration
+- **LXC container metrics** via Proxmox VE integration (CPU, RAM, status)
 - **Background metrics collection** for instant loading
 - **Intelligent caching system** for sessions and user data with automatic refresh
 
@@ -231,17 +231,17 @@ TowerView/
      - Select which servers they can access
      - Set permissions per server (view sessions, terminate, etc.)
 
-### Portainer Integration
+### Proxmox VE Integration
 
-1. Navigate to **Settings** (in top menu)
-2. Find the **Portainer Configuration** section
+1. Create API token in Proxmox: `pveum user token add root@pam towerview --privsep 0`
+2. Navigate to **Settings → Proxmox** tab
 3. Configure:
-   - Portainer URL (e.g., https://portainer.example.com)
-   - Username (your Portainer username)
-   - Password (your Portainer password)
-   - Endpoint ID (usually 1 for local, check Portainer)
-4. Click **"Save Settings"**
-5. Map servers to containers in the **Docker Container Mapping** section
+   - Proxmox Host (IP address or hostname)
+   - API Token (full format: `USER@REALM!TOKENID=SECRET`)
+   - Node Name (usually `pve`)
+   - SSL Verification (disable for self-signed certificates)
+4. Click **"Connect"**
+5. Map servers to LXC containers using Node + VMID (e.g., `pve:100`)
 
 ### Performance & Caching
 
@@ -311,8 +311,8 @@ GET  /api/users/me             # Get current user info
 
 ### Settings & Metrics
 ```
-GET  /api/settings/portainer/metrics/{server_id}
-POST /api/settings/portainer/container/{server_id}/action
+GET  /api/settings/proxmox/metrics/{server_id}
+POST /api/settings/proxmox/container/{server_id}/action
 GET  /api/settings/site                     # Get site settings
 POST /api/settings/site                     # Update site settings
 ```
@@ -401,7 +401,21 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 
 ## 📝 Changelog
 
-### Version 2.3.19 (Current)
+### Version 2.3.20 (Current)
+
+- **Proxmox VE Integration**:
+  - Migrated from Portainer (Docker) to Proxmox VE (LXC) for container monitoring
+  - Direct integration with Proxmox API for real-time metrics
+  - Permanent API tokens (no auto-refresh needed)
+  - Stable container identification using Node + VMID
+  - Supports multiple Proxmox nodes in cluster
+  - New service: `backend/app/services/proxmox_service.py`
+  - New API routes: `backend/app/api/routes/settings/proxmox.py`
+  - Metrics collection every 2 seconds from LXC containers
+  - Container actions: start, stop, shutdown, reboot
+  - Database model: `ProxmoxIntegration` (Portainer marked as deprecated)
+
+### Version 2.3.19
 
 - **Library Detection for Emby & Jellyfin**:
   - Fixed missing library names in analytics for Emby and Jellyfin servers
@@ -775,10 +789,11 @@ docker exec towerview-redis-1 redis-cli FLUSHALL
 - Check if server has active sessions
 - Review server credentials
 
-**Container controls not working**
-- Verify Portainer integration
-- Check API token validity
-- Ensure container mappings are correct
+**Container metrics not showing**
+- Verify Proxmox integration is configured
+- Check API token validity (format: `USER@REALM!TOKENID=SECRET`)
+- Ensure container mappings are correct (Node + VMID)
+- Disable SSL verification if using self-signed certificates
 
 **Audit logs not loading**
 - Only admin users can view audit logs
@@ -803,7 +818,7 @@ MIT License - see [LICENSE](LICENSE) file for details
 - [React](https://reactjs.org/) - Frontend framework
 - [Vite](https://vitejs.dev/) - Build tool
 - [TailwindCSS](https://tailwindcss.com/) - Styling
-- [Portainer](https://www.portainer.io/) - Container management
+- [Proxmox VE](https://www.proxmox.com/) - Virtualization platform
 - Media server teams (Plex, Emby, Jellyfin)
 
 ---

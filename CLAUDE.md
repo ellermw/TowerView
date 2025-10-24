@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TowerView is a unified media server management platform that provides a single administrative interface for managing multiple media servers (Plex, Jellyfin, Emby). It includes real-time monitoring, user management, session control, analytics, and Docker container management via Portainer integration.
+TowerView is a unified media server management platform that provides a single administrative interface for managing multiple media servers (Plex, Jellyfin, Emby). It includes real-time monitoring, user management, session control, analytics, and LXC container monitoring via Proxmox VE integration.
 
-**Current Version:** 2.3.19
+**Current Version:** 2.3.20
 
 ## Architecture
 
@@ -219,7 +219,7 @@ Routes defined in `backend/app/api/routes/` (modularized in subdirectories):
 - Audit logs: Administrative action tracking
 
 ### Settings (`settings/` subdirectory)
-- Portainer integration: Container management, metrics
+- Proxmox integration: LXC container monitoring, metrics
 - Site settings: Application configuration
 - Sync settings: Automatic sync intervals
 
@@ -248,24 +248,38 @@ ADMIN_PASSWORD=secure_password
 
 ## Important Implementation Notes
 
-### Container Synchronization
+### Proxmox VE Integration
 
-TowerView automatically syncs Docker container mappings every 5 minutes via `container_sync_service.py`. This handles container ID changes when containers are recreated. Manual sync available in Settings > Portainer.
+**Version 2.3.20+**: Migrated from Portainer (Docker) to Proxmox VE (LXC) for container monitoring.
 
-### Portainer Token Auto-Refresh
+**Architecture**:
+- Direct integration with Proxmox VE API
+- Monitors LXC containers running media servers
+- Collects real-time metrics: CPU %, RAM usage/total, container status
+- Supports multiple Proxmox nodes in a cluster
 
-Version 2.3.16+ includes automatic Portainer JWT token refresh:
+**Authentication**:
+- Uses permanent API tokens (format: `USER@REALM!TOKENID=SECRET`)
+- No token refresh needed (unlike Portainer JWT tokens)
+- Supports self-signed SSL certificates (common in home labs)
 
-**How It Works**:
-- `PortainerAuthService` checks token expiry with 5-minute buffer before expiration
-- If token is expired or about to expire, automatically re-authenticates using stored credentials
-- Updates database with new token transparently
-- Supports both JWT tokens (auto-refresh) and API keys (no expiration)
+**Container Identification**:
+- LXC containers identified by stable Node + VMID (e.g., `pve:100`)
+- VMIDs don't change on container restart (unlike Docker container IDs)
+- No synchronization needed
 
 **Implementation**:
-- `backend/app/services/portainer_auth_service.py`: Token validation and refresh logic
-- `backend/app/services/metrics_cache_service.py`: Uses `_get_fresh_token()` for all Portainer API calls
-- No user intervention required after container restarts or token expiration
+- `backend/app/services/proxmox_service.py`: Proxmox VE API client
+- `backend/app/api/routes/settings/proxmox.py`: API endpoints
+- `backend/app/services/metrics_cache_service.py`: Metrics collection every 2 seconds
+- `backend/app/models/settings.py`: `ProxmoxIntegration` model
+
+**Setup**:
+1. Create API token in Proxmox: `pveum user token add root@pam towerview --privsep 0`
+2. Configure in Settings > Proxmox tab
+3. Map each media server to its LXC container (node + VMID)
+
+**Deprecated**: Portainer integration kept for backward compatibility but marked as deprecated
 
 ### Credential Encryption
 

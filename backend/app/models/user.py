@@ -44,3 +44,4 @@ class User(Base):
     settings_updates = relationship("SystemSettings", back_populates="updated_by")
     netdata_integrations = relationship("NetdataIntegration", back_populates="created_by")
     portainer_integrations = relationship("PortainerIntegration", back_populates="created_by")
+    proxmox_integrations = relationship("ProxmoxIntegration", back_populates="created_by")

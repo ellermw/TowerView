@@ -52,7 +52,7 @@ class NetdataIntegration(Base):
 
 
 class PortainerIntegration(Base):
-    """Store Portainer integration settings"""
+    """Store Portainer integration settings (DEPRECATED - replaced by ProxmoxIntegration)"""
     __tablename__ = "portainer_integrations"
 
     id = Column(Integer, primary_key=True)
@@ -79,3 +79,33 @@ class PortainerIntegration(Base):
 
     # Relationships
     created_by = relationship("User", back_populates="portainer_integrations")
+
+
+class ProxmoxIntegration(Base):
+    """Store Proxmox VE integration settings for LXC container monitoring"""
+    __tablename__ = "proxmox_integrations"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False, default="Proxmox")
+    enabled = Column(Boolean, default=True)
+
+    # Proxmox connection settings
+    host = Column(String(500), nullable=True)  # e.g., "192.168.1.100" or "proxmox.local"
+    port = Column(Integer, default=8006)  # Proxmox API port
+    node = Column(String(255), nullable=True)  # Default node name (e.g., "pve")
+    api_token = Column(String(500), nullable=True)  # PVEAPIToken=USER@REALM!TOKENID=UUID (encrypted)
+    verify_ssl = Column(Boolean, default=False)  # Most home labs use self-signed certs
+
+    # Container mappings to servers
+    container_mappings = Column(JSON, default=dict)  # {server_id: {"node": "pve", "vmid": 100}}
+
+    # Cached container list from all nodes
+    cached_containers = Column(JSON, default=list)
+    containers_updated_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by_id = Column(Integer, ForeignKey("users.id"))
+
+    # Relationships
+    created_by = relationship("User", back_populates="proxmox_integrations")
